@@ -42,6 +42,7 @@ The bridge server loads the Kimodo model once at startup and then responds to ge
 ### 1 — Install Kimodo
 
 Follow the [official Kimodo instructions](https://github.com/nv-tlabs/kimodo). The short version:
+
 Note: Installe it via a python virtual environment and not via docker or other, as this has not been tested.
 
 ```bash
