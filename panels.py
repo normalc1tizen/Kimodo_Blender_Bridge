@@ -109,6 +109,12 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
 
         layout.separator(factor=0.5)
 
+
+        row = layout.row(align=True)
+        row.label(text="Model:")
+        row.prop(s, "model_type", expand=True)
+        row.prop(s, "seed", text="Seed")
+
         # --- FPS warning ---
         scene_fps = context.scene.render.fps / context.scene.render.fps_base
         if abs(scene_fps - 30.0) > 0.01:
@@ -129,7 +135,7 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             is_generating = (i == s.generating_segment_index)
 
             box = layout.box()
-            box.alert = is_active   # blue highlight on active segment
+            #box.alert = is_active   # blue highlight on active segment
 
             # --- Header row: [enabled] [color] [label] [select] [generate] ---
             header = box.row(align=True)
@@ -150,9 +156,9 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
                 header.label(text="", icon='CHECKMARK')
 
             # Select button — sets this as the active segment
-            select_icon = 'RADIOBUT_ON' if is_active else 'RADIOBUT_OFF'
-            op_sel = header.operator("kimodo.select_segment", text="", icon=select_icon, emboss=False)
-            op_sel.index = i
+            #select_icon = 'RADIOBUT_ON' if is_active else 'RADIOBUT_OFF'
+            #op_sel = header.operator("kimodo.select_segment", text="", icon=select_icon, emboss=False)
+            #op_sel.index = i
 
             # Remove button
             op_rem = header.operator("kimodo.remove_segment_by_index", text="", icon='X', emboss=False)
@@ -173,9 +179,7 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             col.label(text=f"  {dur:.1f}s · {seg.end_frame - seg.start_frame + 1} frames",
                       icon='TIME')
 
-            row3 = col.row(align=True)
-            row3.prop(seg, "model_type", expand=True)
-            row3.prop(seg, "seed", text="Seed")
+
 
         layout.separator()
 
@@ -249,7 +253,8 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
             box.label(text=s.generation_progress or "Working…", icon='TIME')
         else:
             connected_icon = 'PLAY' if s.is_connected else 'UNLINKED'
-            row = layout.row()
+            row = layout.column()
+            
             row.enabled = s.is_connected
             
             scene_fps = context.scene.render.fps / context.scene.render.fps_base
