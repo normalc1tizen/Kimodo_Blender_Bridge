@@ -122,6 +122,8 @@ After generating motion you can drive any armature from the Kimodo source:
 
 Use **Save / Load Preset** to store bone mappings for a rig and reuse them later.
 
+<img width="1233" height="839" alt="image" src="https://github.com/user-attachments/assets/d76290db-7662-4223-9cd6-7083f89b35ca" />
+
 ### Motion constraints
 
 Spatial goals can be given to Kimodo so the generated motion passes through specific positions:
@@ -140,9 +142,7 @@ To add a constraint:
 
 **Auto-Origin** (off by default) shifts all constraint positions so the earliest root waypoint lands at Kimodo's world origin — author constraints anywhere in your scene without worrying about absolute coordinates.
 
-
-<img width="1233" height="839" alt="image" src="https://github.com/user-attachments/assets/d76290db-7662-4223-9cd6-7083f89b35ca" />
-
+---
 
 ## Panel reference
 
