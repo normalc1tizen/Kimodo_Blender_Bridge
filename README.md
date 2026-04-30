@@ -105,7 +105,7 @@ Each segment is an independent text prompt mapped to a frame range. **Generate A
 - Use **Duplicate** to copy a segment and place it immediately after.
 - Use **↑ / ↓** to reorder segments.
 
-<img width="2660" height="1194" alt="image" src="https://github.com/user-attachments/assets/13f75c02-6984-40b5-8b14-e91871690534" />
+<img width="2676" height="1181" alt="image" src="https://github.com/user-attachments/assets/a5d336e9-f32f-44c7-9aca-a09983e869d6" />
 
 
 ### Retarget to your own rig
