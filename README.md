@@ -110,9 +110,10 @@ After generating motion you can drive any armature from the Kimodo source:
 1. Open the **Retarget** panel.
 2. Set **Source** to `Kimodo_Source` and **Target** to your character rig.
 3. Click **Auto-Match Bones** — the addon fuzzy-matches Kimodo bone names against your rig.
-4. Review the mapping, enable/disable pairs, choose a retarget mode per bone.
-5. Click **Apply Constraints** — Blender constraint drivers are added to your rig.
-6. Click **Bake & Remove Constraints** when you are happy — keyframes are baked onto your rig and all Kimodo constraints are removed, leaving a clean, self-contained animation.
+4. Review the mapping, enable/disable pairs, choose a retarget mode per bone. Its recommended to also adjust the scale of the armature to match your character and then applying it with CTRL+A.
+5. Choose the type of constraint the plugin should use, "Child of", "Copy Rotation" etc...
+6. Click **Apply Constraints** — Blender constraint drivers are added to your rig.
+7. Click **Bake & Remove Constraints** when you are happy — keyframes are baked onto your rig and all Kimodo constraints are removed, leaving a clean, self-contained animation.
 
 Use **Save / Load Preset** to store bone mappings for a rig and reuse them later.
 
@@ -132,7 +133,7 @@ To add a constraint:
 2. Set the timeline to the target frame.
 3. In the **Motion Constraints** panel, click the constraint type.
 
-**Auto-Origin** (on by default) shifts all constraint positions so the earliest root waypoint lands at Kimodo's world origin — author constraints anywhere in your scene without worrying about absolute coordinates.
+**Auto-Origin** (off by default) shifts all constraint positions so the earliest root waypoint lands at Kimodo's world origin — author constraints anywhere in your scene without worrying about absolute coordinates.
 
 ---
 
