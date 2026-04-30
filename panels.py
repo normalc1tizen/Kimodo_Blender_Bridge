@@ -192,9 +192,6 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             box2.label(text=s.generation_progress or "Working…", icon='TIME')
             box2.operator("kimodo.cancel_generation", text="Cancel", icon='X')
 
-        # Timeline hint
-        layout.separator(factor=0.5)
-        layout.label(text="Segments shown in Timeline ↓", icon='PREVIEW_RANGE')
 
 
 # ---------------------------------------------------------------------------
