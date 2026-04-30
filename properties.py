@@ -27,6 +27,19 @@ _SEGMENT_COLORS = [
 ]
 
 
+def _on_end_frame_update(self, context):
+    """When a segment's end_frame changes, push the next segment's start_frame forward."""
+    s = context.scene.kimodo
+    segs = s.motion_segments
+    for i, seg in enumerate(segs):
+        if seg == self and i + 1 < len(segs):
+            next_seg = segs[i + 1]
+            duration = next_seg.end_frame - next_seg.start_frame
+            next_seg.start_frame = self.end_frame + 1
+            next_seg.end_frame = next_seg.start_frame + duration
+            break
+
+
 class KIMODO_MotionSegment(PropertyGroup):
     """One motion segment: a text prompt mapped to a frame range."""
 
@@ -46,6 +59,7 @@ class KIMODO_MotionSegment(PropertyGroup):
         description="Last frame of this motion segment",
         default=60,
         min=1,
+        update=_on_end_frame_update,
     )
     model_type: EnumProperty(
         name="Model",

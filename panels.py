@@ -109,6 +109,14 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
 
         layout.separator(factor=0.5)
 
+        # --- FPS warning ---
+        scene_fps = context.scene.render.fps / context.scene.render.fps_base
+        if abs(scene_fps - 30.0) > 0.01:
+            fps_box = layout.box()
+            fps_box.alert = True
+            fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
+            fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
+
         # --- Segment list ---
         if not s.motion_segments:
             col = layout.column()
@@ -128,7 +136,6 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
 
             header.prop(seg, "enabled", text="", emboss=False,
                         icon='CHECKBOX_HLT' if seg.enabled else 'CHECKBOX_DEHLT')
-            header.prop(seg, "color", text="")
 
             # Segment title: prompt preview + frame range
             title = f"  {seg.prompt[:28]}{'…' if len(seg.prompt) > 28 else ''}"
@@ -156,7 +163,9 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             col.prop(seg, "prompt", text="")
 
             row2 = col.row(align=True)
-            row2.prop(seg, "start_frame", text="Start")
+            start_sub = row2.row(align=True)
+            start_sub.enabled = (i == 0)
+            start_sub.prop(seg, "start_frame", text="Start")
             row2.prop(seg, "end_frame",   text="End")
 
             fps = context.scene.render.fps / context.scene.render.fps_base
@@ -182,9 +191,6 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             box2.label(text=s.generation_progress or "Working…", icon='TIME')
             box2.operator("kimodo.cancel_generation", text="Cancel", icon='X')
 
-        # Timeline hint
-        layout.separator(factor=0.5)
-        layout.label(text="Segments shown in Timeline ↓", icon='PREVIEW_RANGE')
 
 
 # ---------------------------------------------------------------------------

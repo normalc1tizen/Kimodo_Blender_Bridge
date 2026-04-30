@@ -1455,6 +1455,19 @@ class KIMODO_OT_ClearConstraints(Operator):
         return {'FINISHED'}
 
 
+class KIMODO_OT_SetTo30FPS(Operator):
+    """Set the scene frame rate to 30 FPS for Kimodo compatibility"""
+    bl_idname = "kimodo.set_to_30fps"
+    bl_label = "Set Scene to 30 FPS"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        context.scene.render.fps = 30
+        context.scene.render.fps_base = 1.0
+        self.report({'INFO'}, "Scene FPS set to 30.")
+        return {'FINISHED'}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
@@ -1495,6 +1508,7 @@ _classes = [
     KIMODO_OT_SelectConstraintObject,
     KIMODO_OT_PreviewConstraintsJSON,
     KIMODO_OT_ClearConstraints,
+    KIMODO_OT_SetTo30FPS,
 ]
 
 
