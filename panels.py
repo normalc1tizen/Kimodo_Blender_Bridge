@@ -136,7 +136,6 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
 
             header.prop(seg, "enabled", text="", emboss=False,
                         icon='CHECKBOX_HLT' if seg.enabled else 'CHECKBOX_DEHLT')
-            header.prop(seg, "color", text="")
 
             # Segment title: prompt preview + frame range
             title = f"  {seg.prompt[:28]}{'…' if len(seg.prompt) > 28 else ''}"
