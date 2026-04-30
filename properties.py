@@ -324,8 +324,8 @@ class KIMODO_SceneSettings(PropertyGroup):
     auto_canonicalize: BoolProperty(
         name="Auto-Canonicalize",
         description="Automatically offset all constraint positions so the earliest "
-                    "waypoint lands at Kimodo's (0,0) origin. Recommended: on.",
-        default=True,
+                    "waypoint lands at Kimodo's (0,0) origin.",
+        default=False,
     )
     constraint_json_preview: StringProperty(
         name="Constraint JSON",
