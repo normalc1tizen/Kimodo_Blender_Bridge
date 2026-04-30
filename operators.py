@@ -920,14 +920,14 @@ class KIMODO_OT_GenerateSegment(Operator):
 
 
 class KIMODO_OT_GenerateAllSegments(Operator):
-    """Generate all enabled segments sequentially"""
+    """Generate all enabled segments as a single multi-prompt sequence with smooth transitions"""
     bl_idname = "kimodo.generate_all_segments"
     bl_label  = "Generate All Segments"
 
-    _timer    = None
-    _thread   = None
-    _queue: list = []
-    _current_idx: int = -1
+    _timer           = None
+    _thread          = None
+    _segment_indices: list = []
+    _start_frame: int = 1
 
     def invoke(self, context, event):
         s = context.scene.kimodo
@@ -938,71 +938,55 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             self.report({'WARNING'}, "Already generating.")
             return {'CANCELLED'}
 
-        # Build ordered queue of enabled segment indices
-        self._queue = [
-            i for i, seg in enumerate(s.motion_segments)
-            if seg.enabled
-        ]
-        # Sort by start_frame so we go chronologically
-        self._queue.sort(key=lambda i: s.motion_segments[i].start_frame)
-
-        if not self._queue:
+        # Collect enabled segments sorted chronologically
+        ordered = sorted(
+            [(i, seg) for i, seg in enumerate(s.motion_segments) if seg.enabled],
+            key=lambda x: x[1].start_frame,
+        )
+        if not ordered:
             self.report({'WARNING'}, "No enabled segments.")
             return {'CANCELLED'}
 
+        self._segment_indices = [i for i, _ in ordered]
+        self._start_frame = ordered[0][1].start_frame
+
+        fps = context.scene.render.fps / context.scene.render.fps_base
+        prompts   = [seg.prompt for _, seg in ordered]
+        durations = [(seg.end_frame - seg.start_frame + 1) / fps for _, seg in ordered]
+
+        # Use the first enabled segment's seed (or random if unset)
+        first_seg = ordered[0][1]
+        seed = first_seg.seed if first_seg.seed >= 0 else random.randint(0, 2**31)
+
         s.is_generating = True
+        s.generating_segment_index = self._segment_indices[0]
         _reset_state()
-        self._kick_next(context)
+        _generation_state["running"] = True
+        s.generation_progress = (
+            f"Generating {len(ordered)} segments as multi-prompt sequence…"
+        )
+
+        self._thread = threading.Thread(
+            target=self._run_all,
+            args=(prompts, durations, seed, s.output_format, s.bvh_standard_tpose),
+            daemon=True,
+        )
+        self._thread.start()
 
         wm = context.window_manager
         self._timer = wm.event_timer_add(0.5, window=context.window)
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
-    def _kick_next(self, context):
-        import random as _random
-        s = context.scene.kimodo
-
-        if not self._queue:
-            _generation_state["done"]    = True
-            _generation_state["success"] = True
-            _generation_state["result"]  = "__all_done__"
-            return
-
-        self._current_idx = self._queue.pop(0)
-        seg = s.motion_segments[self._current_idx]
-        s.segment_index = self._current_idx
-        s.generating_segment_index = self._current_idx
-
-        fps      = context.scene.render.fps / context.scene.render.fps_base
-        duration = (seg.end_frame - seg.start_frame + 1) / fps
-        seed     = seg.seed if seg.seed >= 0 else _random.randint(0, 2**31)
-        constraints_json = _build_segment_constraints(context, seg)
-
-        _generation_state.update(running=True, done=False, success=False,
-                                 result="", progress="")
-        remaining = len(self._queue) + 1
-        s.generation_progress = (
-            f"[{remaining} remaining] {seg.prompt[:35]}…"
-        )
-
-        self._thread = threading.Thread(
-            target=self._run_one,
-            args=(seg.prompt, duration, seed, s.output_format, constraints_json, s.bvh_standard_tpose),
-            daemon=True,
-        )
-        self._thread.start()
-
-    def _run_one(self, prompt, duration, seed, fmt, constraints_json, bvh_standard_tpose):
+    def _run_all(self, prompts, durations, seed, fmt, bvh_standard_tpose):
         def progress_cb(msg):
             _generation_state["progress"] = msg
 
-        success, result = sc.generate_motion(
-            prompt=prompt,
-            duration=duration,
+        success, result = sc.generate_motion_multi(
+            prompts=prompts,
+            durations=durations,
             seed=seed,
             output_format=fmt,
-            constraints_json=constraints_json,
             bvh_standard_tpose=bvh_standard_tpose,
             progress_callback=progress_cb,
         )
@@ -1018,41 +1002,44 @@ class KIMODO_OT_GenerateAllSegments(Operator):
 
         s.generation_progress = _generation_state.get("progress", "")
         _tag_timeline_redraw(context)
+        for area in context.screen.areas:
+            if area.type == 'VIEW_3D':
+                area.tag_redraw()
 
         if not _generation_state["done"]:
             return {'RUNNING_MODAL'}
 
-        # One segment finished
-        if _generation_state["result"] == "__all_done__":
-            # All done
-            context.window_manager.event_timer_remove(self._timer)
-            s.is_generating = False
-            s.generating_segment_index = -1
-            s.generation_progress = f"All segments generated ✓"
-            self.report({'INFO'}, "All segments generated.")
-            _tag_timeline_redraw(context)
-            return {'FINISHED'}
+        context.window_manager.event_timer_remove(self._timer)
+        s.is_generating = False
+        s.generating_segment_index = -1
 
-        if _generation_state["success"] and self._current_idx >= 0:
+        if _generation_state["success"]:
             file_path = _generation_state["result"]
-            seg = s.motion_segments[self._current_idx]
-            seg.last_bvh_path = file_path
-            seg.generated = True
+
+            # Mark all segments as generated and store the shared path
+            for idx in self._segment_indices:
+                seg = s.motion_segments[idx]
+                seg.last_bvh_path = file_path
+                seg.generated = True
+
             if os.path.splitext(file_path)[1].lower() == ".bvh":
+                label = f"{len(self._segment_indices)}-prompt"
                 bpy.ops.kimodo.import_bvh_at_frame(
                     'EXEC_DEFAULT',
                     filepath=file_path,
-                    start_frame=seg.start_frame,
-                    label=seg.prompt[:30],
+                    start_frame=self._start_frame,
+                    label=label,
                 )
-        else:
-            self.report({'WARNING'},
-                f"Segment {self._current_idx} failed: {_generation_state['result']}")
 
-        # Kick the next segment
-        _reset_state()
-        self._kick_next(context)
-        return {'RUNNING_MODAL'}
+            n = len(self._segment_indices)
+            s.generation_progress = f"All {n} segments generated ✓"
+            self.report({'INFO'}, f"Multi-prompt generation complete ({n} segments) ✓")
+        else:
+            s.generation_progress = "Failed ✗"
+            self.report({'ERROR'}, f"Generation failed: {_generation_state['result']}")
+
+        _tag_timeline_redraw(context)
+        return {'FINISHED'}
 
     def cancel(self, context):
         context.window_manager.event_timer_remove(self._timer)
