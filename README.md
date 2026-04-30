@@ -162,17 +162,13 @@ To add a constraint:
 - Run the path manually in a terminal: `<python> bridge_server.py` — any import errors will print there.
 
 **CUDA out of memory**
-- Run `kimodo_textencoder --device cpu` first to move the text encoder off the GPU.
 - Use a shorter duration or fewer segments.
-
-**Generated motion is sideways or inverted**
-- This is a coordinate-space mismatch. Re-import with the addon's **Import BVH** button rather than Blender's built-in importer — the addon sets the correct axis mapping (`-Z` forward, `Y` up, scale 0.01).
 
 **Retargeted rig is in the wrong pose**
 - Try a different retarget mode per bone (Copy Rotation vs Copy Transforms vs Child Of).
-- Make sure the source and target armatures are both in their rest pose before applying constraints.
+- Make sure the source and target armatures are both in their rest pose / have the same pose before trying the retargeting, and have scale applied on the armature.
 
-**Blender shows the wrong FPS**
+**Frames from imorted animation dont match**
 - Kimodo generates at exactly 30 FPS. Use the **Set to 30 FPS** button that appears in the Motion Segments panel when your scene is at a different frame rate.
 
 ---
