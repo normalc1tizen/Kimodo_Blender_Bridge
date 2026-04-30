@@ -251,9 +251,11 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
             connected_icon = 'PLAY' if s.is_connected else 'UNLINKED'
             row = layout.row()
             row.enabled = s.is_connected
-
+            
+            scene_fps = context.scene.render.fps / context.scene.render.fps_base
+            
             if abs(scene_fps - 30.0) > 0.01:
-                fps_box = layout.box()
+                fps_box = row.box()
                 fps_box.alert = True
                 fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
                 fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
