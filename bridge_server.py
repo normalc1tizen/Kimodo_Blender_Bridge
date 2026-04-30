@@ -164,6 +164,9 @@ def _generate_multi(req: dict, model, device: str) -> None:
     if seed is not None:
         seed_everything(int(seed))
 
+    constraints_json = req.get("constraints_json")
+    constraint_lst = _load_constraints(constraints_json, model)
+
     n = len(texts)
     _out({"status": "progress",
           "message": f"Running multi-prompt diffusion ({n} segments, {diffusion_steps} steps)…"})
@@ -171,7 +174,7 @@ def _generate_multi(req: dict, model, device: str) -> None:
     output = model(
         texts,
         num_frames_list,
-        constraint_lst=[],
+        constraint_lst=constraint_lst,
         num_denoising_steps=diffusion_steps,
         num_samples=1,
         multi_prompt=True,

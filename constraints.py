@@ -203,6 +203,7 @@ def build_constraints_json(
     scene: bpy.types.Scene,
     kimodo_fps: float = 30.0,
     auto_canonicalize: bool = True,
+    scene_start_override: "int | None" = None,
 ) -> list[dict]:
     """
     Convert Blender constraint items to Kimodo constraints JSON list.
@@ -219,7 +220,7 @@ def build_constraints_json(
     list of dicts ready to be json.dumps()-ed and sent to Kimodo
     """
     blender_fps = scene.render.fps / scene.render.fps_base
-    scene_start = scene.frame_start
+    scene_start = scene.frame_start if scene_start_override is None else scene_start_override
 
     # Collect enabled items sorted by frame
     items = sorted(

@@ -919,6 +919,47 @@ class KIMODO_OT_GenerateSegment(Operator):
         _generation_state["running"] = False
 
 
+def _enforce_segment_continuity(ordered_segs):
+    """
+    Make segments contiguous: each segment starts the frame after the previous ends.
+    Preserves each segment's duration (frame count). Returns True if any were changed.
+    """
+    changed = False
+    prev_end = None
+    for seg in ordered_segs:
+        if prev_end is not None:
+            expected_start = prev_end + 1
+            if seg.start_frame != expected_start:
+                duration_frames = seg.end_frame - seg.start_frame
+                seg.start_frame = expected_start
+                seg.end_frame   = expected_start + duration_frames
+                changed = True
+        prev_end = seg.end_frame
+    return changed
+
+
+def _build_multi_prompt_constraints(context, first_start_frame: int) -> "str | None":
+    """Build scene constraints JSON for multi-prompt generation.
+
+    Uses first_start_frame as the Kimodo sequence origin so constraint frame
+    indices align with the combined BVH that starts at that Blender frame.
+    """
+    s = context.scene.kimodo
+    enabled = [c for c in s.motion_constraints if c.enabled and c.marker_object]
+    if not enabled:
+        return None
+    try:
+        data = cmod.build_constraints_json(
+            s.motion_constraints, context.scene,
+            kimodo_fps=s.kimodo_fps,
+            auto_canonicalize=s.auto_canonicalize,
+            scene_start_override=first_start_frame,
+        )
+        return json.dumps(data) if data else None
+    except Exception:
+        return None
+
+
 class KIMODO_OT_GenerateAllSegments(Operator):
     """Generate all enabled segments as a single multi-prompt sequence with smooth transitions"""
     bl_idname = "kimodo.generate_all_segments"
@@ -947,6 +988,12 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             self.report({'WARNING'}, "No enabled segments.")
             return {'CANCELLED'}
 
+        # Auto-fix any gaps or overlaps between segments
+        ordered_segs = [seg for _, seg in ordered]
+        if _enforce_segment_continuity(ordered_segs):
+            self.report({'INFO'},
+                "Segment frame ranges adjusted to be contiguous (no gaps/overlaps).")
+
         self._segment_indices = [i for i, _ in ordered]
         self._start_frame = ordered[0][1].start_frame
 
@@ -958,6 +1005,9 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         first_seg = ordered[0][1]
         seed = first_seg.seed if first_seg.seed >= 0 else random.randint(0, 2**31)
 
+        # Build constraints relative to the start of the combined sequence
+        constraints_json = _build_multi_prompt_constraints(context, self._start_frame)
+
         s.is_generating = True
         s.generating_segment_index = self._segment_indices[0]
         _reset_state()
@@ -968,7 +1018,8 @@ class KIMODO_OT_GenerateAllSegments(Operator):
 
         self._thread = threading.Thread(
             target=self._run_all,
-            args=(prompts, durations, seed, s.output_format, s.bvh_standard_tpose),
+            args=(prompts, durations, seed, s.output_format,
+                  constraints_json, s.bvh_standard_tpose),
             daemon=True,
         )
         self._thread.start()
@@ -978,7 +1029,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
         wm.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
-    def _run_all(self, prompts, durations, seed, fmt, bvh_standard_tpose):
+    def _run_all(self, prompts, durations, seed, fmt, constraints_json, bvh_standard_tpose):
         def progress_cb(msg):
             _generation_state["progress"] = msg
 
@@ -987,6 +1038,7 @@ class KIMODO_OT_GenerateAllSegments(Operator):
             durations=durations,
             seed=seed,
             output_format=fmt,
+            constraints_json=constraints_json,
             bvh_standard_tpose=bvh_standard_tpose,
             progress_callback=progress_cb,
         )
