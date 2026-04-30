@@ -164,6 +164,33 @@ def get_status() -> str:
     return _status
 
 
+def _recv_until_done(progress_callback) -> "tuple[bool, str]":
+    """Read responses from bridge_server until 'done' or 'error'. Shared by generate functions."""
+    while True:
+        if not is_running():
+            return False, "Kimodo process died during generation."
+
+        msg = _recv()
+        if msg is None:
+            time.sleep(0.05)
+            continue
+
+        s = msg.get("status", "")
+
+        if s == "progress":
+            if progress_callback:
+                progress_callback(msg.get("message", ""))
+
+        elif s == "done":
+            path = msg.get("path", "")
+            if not path or not os.path.isfile(path):
+                return False, f"Output file not found: {path}"
+            return True, path
+
+        elif s == "error":
+            return False, msg.get("message", "Generation failed")
+
+
 def generate_motion(
     prompt: str,
     duration: float,
@@ -198,29 +225,47 @@ def generate_motion(
     except Exception as exc:
         return False, f"Failed to send request: {exc}"
 
-    while True:
-        if not is_running():
-            return False, "Kimodo process died during generation."
+    return _recv_until_done(progress_callback)
 
-        msg = _recv()
-        if msg is None:
-            time.sleep(0.05)
-            continue
 
-        s = msg.get("status", "")
+def generate_motion_multi(
+    prompts: "list[str]",
+    durations: "list[float]",
+    seed: int,
+    output_format: str,
+    constraints_json: "str | None" = None,
+    diffusion_steps: int = 100,
+    num_transition_frames: int = 5,
+    bvh_standard_tpose: bool = False,
+    progress_callback=None,
+) -> "tuple[bool, str]":
+    """
+    Generate a single continuous motion from multiple prompts in one model call.
+    Kimodo transitions smoothly between prompts using num_transition_frames.
+    Blocks until done or error. Must be called from a background thread.
+    Returns (success, file_path_or_error_message).
+    """
+    if not is_running():
+        return False, "Kimodo is not running — click 'Start Kimodo' first."
 
-        if s == "progress":
-            if progress_callback:
-                progress_callback(msg.get("message", ""))
+    req = {
+        "cmd": "generate_multi",
+        "prompts": prompts,
+        "durations": durations,
+        "seed": seed if seed >= 0 else None,
+        "output_format": output_format,
+        "constraints_json": constraints_json,
+        "diffusion_steps": diffusion_steps,
+        "num_transition_frames": num_transition_frames,
+        "bvh_standard_tpose": bvh_standard_tpose,
+    }
 
-        elif s == "done":
-            path = msg.get("path", "")
-            if not path or not os.path.isfile(path):
-                return False, f"Output file not found: {path}"
-            return True, path
+    try:
+        _send(req)
+    except Exception as exc:
+        return False, f"Failed to send request: {exc}"
 
-        elif s == "error":
-            return False, msg.get("message", "Generation failed")
+    return _recv_until_done(progress_callback)
 
 
 # ---------------------------------------------------------------------------

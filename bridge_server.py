@@ -27,12 +27,74 @@ def _out(obj: dict) -> None:
 # Generation
 # ---------------------------------------------------------------------------
 
-def _generate(req: dict, model, device: str) -> None:
+def _save_output(output, output_format, model, device, standard_tpose, prefix="kimodo_"):
+    """Save model output dict to a temp file; returns (can_do_bvh, out_path)."""
     import torch
-    from kimodo.constraints import load_constraints_lst
     from kimodo.exports.bvh import save_motion_bvh
     from kimodo.exports.motion_io import save_kimodo_npz
     from kimodo.skeleton import SOMASkeleton30, global_rots_to_local_rots
+
+    skeleton   = model.skeleton
+    want_bvh   = (output_format == "bvh")
+    can_do_bvh = False
+
+    if want_bvh:
+        if isinstance(skeleton, SOMASkeleton30):
+            skeleton = skeleton.somaskel77.to(device)
+        can_do_bvh = hasattr(skeleton, "name") and "somaskel" in skeleton.name
+        if not can_do_bvh:
+            _out({"status": "progress",
+                  "message": "BVH not supported for this model — using NPZ."})
+
+    suffix = ".bvh" if can_do_bvh else ".npz"
+    fd, out_path = tempfile.mkstemp(suffix=suffix, prefix=prefix)
+    os.close(fd)
+
+    fps = model.fps
+    if can_do_bvh:
+        joints_pos = torch.from_numpy(output["posed_joints"][0]).to(device)
+        joints_rot = torch.from_numpy(output["global_rot_mats"][0]).to(device)
+        local_rots = global_rots_to_local_rots(joints_rot, skeleton)
+        root_pos   = joints_pos[:, skeleton.root_idx, :]
+        save_motion_bvh(
+            out_path, local_rots, root_pos,
+            skeleton=skeleton, fps=fps, standard_tpose=standard_tpose,
+        )
+    else:
+        single = {
+            k: (v[0] if hasattr(v, "shape") and v.ndim > 0 and v.shape[0] == 1 else v)
+            for k, v in output.items()
+        }
+        save_kimodo_npz(out_path, single)
+
+    return out_path
+
+
+def _load_constraints(constraints_json, model):
+    """Write constraints JSON to a temp file and load them; returns constraint_lst."""
+    from kimodo.constraints import load_constraints_lst
+
+    constraint_lst = []
+    tmp_con = None
+    if constraints_json:
+        try:
+            fd, tmp_con = tempfile.mkstemp(suffix=".json", prefix="kimodo_con_")
+            with os.fdopen(fd, "w") as f:
+                f.write(constraints_json)
+            constraint_lst = load_constraints_lst(tmp_con, model.skeleton)
+        except Exception as exc:
+            _out({"status": "progress",
+                  "message": f"Warning: constraints skipped ({exc})"})
+        finally:
+            if tmp_con and os.path.exists(tmp_con):
+                try:
+                    os.unlink(tmp_con)
+                except OSError:
+                    pass
+    return constraint_lst
+
+
+def _generate(req: dict, model, device: str) -> None:
     from kimodo.tools import seed_everything
 
     prompt: str        = req.get("prompt", "A person walks forward.")
@@ -54,25 +116,7 @@ def _generate(req: dict, model, device: str) -> None:
     if seed is not None:
         seed_everything(int(seed))
 
-    # Constraints: write JSON string to a temp file for load_constraints_lst
-    constraint_lst = []
-    tmp_con = None
-    if constraints_json:
-        try:
-            fd, tmp_con = tempfile.mkstemp(suffix=".json", prefix="kimodo_con_")
-            with os.fdopen(fd, "w") as f:
-                f.write(constraints_json)
-            constraint_lst = load_constraints_lst(tmp_con, model.skeleton)
-        except Exception as exc:
-            _out({"status": "progress",
-                  "message": f"Warning: constraints skipped ({exc})"})
-            constraint_lst = []
-        finally:
-            if tmp_con and os.path.exists(tmp_con):
-                try:
-                    os.unlink(tmp_con)
-                except OSError:
-                    pass
+    constraint_lst = _load_constraints(constraints_json, model)
 
     _out({"status": "progress",
           "message": f"Running diffusion ({diffusion_steps} steps)…"})
@@ -90,40 +134,58 @@ def _generate(req: dict, model, device: str) -> None:
     )
 
     _out({"status": "progress", "message": "Saving output file…"})
+    out_path = _save_output(output, output_format, model, device, standard_tpose)
+    _out({"status": "done", "path": out_path})
 
-    # BVH export is only supported for SOMA skeletons
-    skeleton   = model.skeleton
-    want_bvh   = (output_format == "bvh")
-    can_do_bvh = False
 
-    if want_bvh:
-        if isinstance(skeleton, SOMASkeleton30):
-            skeleton = skeleton.somaskel77.to(device)
-        can_do_bvh = hasattr(skeleton, "name") and "somaskel" in skeleton.name
-        if not can_do_bvh:
-            _out({"status": "progress",
-                  "message": "BVH not supported for this model — using NPZ."})
+def _generate_multi(req: dict, model, device: str) -> None:
+    """Generate a single continuous motion from multiple prompts in one model call."""
+    from kimodo.tools import seed_everything
 
-    suffix = ".bvh" if can_do_bvh else ".npz"
-    fd, out_path = tempfile.mkstemp(suffix=suffix, prefix="kimodo_")
-    os.close(fd)
+    prompts        = req.get("prompts", [])
+    durations      = req.get("durations", [])
+    seed           = req.get("seed")
+    output_format  = req.get("output_format", "bvh")
+    diffusion_steps = int(req.get("diffusion_steps", 100))
+    standard_tpose = bool(req.get("bvh_standard_tpose", False))
+    num_transition_frames = int(req.get("num_transition_frames", 5))
 
-    if can_do_bvh:
-        joints_pos = torch.from_numpy(output["posed_joints"][0]).to(device)
-        joints_rot = torch.from_numpy(output["global_rot_mats"][0]).to(device)
-        local_rots = global_rots_to_local_rots(joints_rot, skeleton)
-        root_pos   = joints_pos[:, skeleton.root_idx, :]
-        save_motion_bvh(
-            out_path, local_rots, root_pos,
-            skeleton=skeleton, fps=fps, standard_tpose=standard_tpose,
-        )
-    else:
-        single = {
-            k: (v[0] if hasattr(v, "shape") and v.ndim > 0 and v.shape[0] == 1 else v)
-            for k, v in output.items()
-        }
-        save_kimodo_npz(out_path, single)
+    if not prompts or not durations or len(prompts) != len(durations):
+        _out({"status": "error",
+              "message": "generate_multi requires non-empty 'prompts' and 'durations' lists of equal length."})
+        return
 
+    # Normalise all prompts
+    texts = [p.strip() + ("" if p.strip().endswith(".") else ".") for p in prompts]
+
+    fps: float = model.fps
+    num_frames_list = [max(1, int(d * fps)) for d in durations]
+
+    if seed is not None:
+        seed_everything(int(seed))
+
+    constraints_json = req.get("constraints_json")
+    constraint_lst = _load_constraints(constraints_json, model)
+
+    n = len(texts)
+    _out({"status": "progress",
+          "message": f"Running multi-prompt diffusion ({n} segments, {diffusion_steps} steps)…"})
+
+    output = model(
+        texts,
+        num_frames_list,
+        constraint_lst=constraint_lst,
+        num_denoising_steps=diffusion_steps,
+        num_samples=1,
+        multi_prompt=True,
+        num_transition_frames=num_transition_frames,
+        post_processing=True,
+        return_numpy=True,
+    )
+
+    _out({"status": "progress", "message": "Saving combined output file…"})
+    out_path = _save_output(output, output_format, model, device, standard_tpose,
+                            prefix="kimodo_multi_")
     _out({"status": "done", "path": out_path})
 
 
@@ -187,6 +249,14 @@ def main() -> None:
         elif cmd == "generate":
             try:
                 _generate(req, model, device)
+            except Exception as exc:
+                _out({"status": "error",
+                      "message": str(exc),
+                      "traceback": traceback.format_exc()})
+
+        elif cmd == "generate_multi":
+            try:
+                _generate_multi(req, model, device)
             except Exception as exc:
                 _out({"status": "error",
                       "message": str(exc),
