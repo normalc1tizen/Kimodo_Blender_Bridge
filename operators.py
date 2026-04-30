@@ -715,7 +715,7 @@ class KIMODO_OT_AddSegment(Operator):
         seg.start_frame = start
         seg.end_frame   = end
         seg.model_type  = s.model_type
-        seg.seed        = -1
+        seg.seed        = s.seed
         seg.color       = color
         seg.enabled     = True
 
@@ -794,6 +794,23 @@ class KIMODO_OT_MoveSegmentDown(Operator):
         if idx < len(s.motion_segments) - 1:
             s.motion_segments.move(idx, idx + 1)
             s.segment_index += 1
+        return {'FINISHED'}
+
+
+class KIMODO_OT_SyncSeeds(Operator):
+    """Sync all segment seeds with global seed setting"""
+    bl_idname = "kimodo.sync_seeds"
+    bl_label = "Sync Seeds"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        s = context.scene.kimodo
+        global_seed = s.seed
+        
+        for seg in s.motion_segments:
+            seg.seed = global_seed
+            
+        self.report({'INFO'}, f"Updated {len(s.motion_segments)} segments with seed {global_seed}")
         return {'FINISHED'}
 
 
@@ -1498,6 +1515,7 @@ _classes = [
     KIMODO_OT_DuplicateSegment,
     KIMODO_OT_MoveSegmentUp,
     KIMODO_OT_MoveSegmentDown,
+    KIMODO_OT_SyncSeeds,
     KIMODO_OT_GenerateSegment,
     KIMODO_OT_GenerateAllSegments,
     # Constraint operators
