@@ -105,6 +105,9 @@ Each segment is an independent text prompt mapped to a frame range. **Generate A
 - Use **Duplicate** to copy a segment and place it immediately after.
 - Use **↑ / ↓** to reorder segments.
 
+<img width="2660" height="1194" alt="image" src="https://github.com/user-attachments/assets/13f75c02-6984-40b5-8b14-e91871690534" />
+
+
 ### Retarget to your own rig
 
 After generating motion you can drive any armature from the Kimodo source:
