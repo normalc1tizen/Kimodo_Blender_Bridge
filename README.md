@@ -1,6 +1,7 @@
-# Kimodo Blender Bridge
+<img width="1207" height="957" alt="image" src="https://github.com/user-attachments/assets/b52f9827-90cf-413a-a6e5-98404633338a" /># Kimodo Blender Bridge
 
 A Blender addon that generates AI-driven human motion via [NVIDIA Kimodo](https://github.com/nv-tlabs/kimodo) and imports it directly into your scene — no copy-pasting, no manual BVH wrangling.
+<img width="1207" height="957" alt="image" src="https://github.com/user-attachments/assets/a54b68b5-2a65-4268-b11e-86bc6e94ac1d" />
 
 Tested on **Blender 5.1** · **Arch Linux**
 
