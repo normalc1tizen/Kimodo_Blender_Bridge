@@ -156,7 +156,9 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             col.prop(seg, "prompt", text="")
 
             row2 = col.row(align=True)
-            row2.prop(seg, "start_frame", text="Start")
+            start_sub = row2.row(align=True)
+            start_sub.enabled = (i == 0)
+            start_sub.prop(seg, "start_frame", text="Start")
             row2.prop(seg, "end_frame",   text="End")
 
             fps = context.scene.render.fps / context.scene.render.fps_base
@@ -169,6 +171,14 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
             row3.prop(seg, "seed", text="Seed")
 
         layout.separator()
+
+        # --- FPS warning ---
+        scene_fps = context.scene.render.fps / context.scene.render.fps_base
+        if abs(scene_fps - 30.0) > 0.01:
+            fps_box = layout.box()
+            fps_box.alert = True
+            fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
+            fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
 
         # --- Generate buttons ---
         layout.prop(s, "reuse_source_armature", icon='FILE_REFRESH')
