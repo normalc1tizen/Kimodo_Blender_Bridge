@@ -4,8 +4,7 @@ A Blender addon that generates AI-driven human motion via [NVIDIA Kimodo](https:
 
 Tested on **Blender 5.1** · **Arch Linux**
 
-<img width="1207" height="957" alt="image" src="https://github.com/user-attachments/assets/a54b68b5-2a65-4268-b11e-86bc6e94ac1d" />
-
+<img width="1237" height="1257" alt="image" src="https://github.com/user-attachments/assets/71a1666d-a460-40eb-af23-1dbb8ab750cb" />
 
 
 ---
