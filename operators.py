@@ -952,7 +952,6 @@ def _enforce_segment_continuity(ordered_segs):
                 seg.start_frame = expected_start
                 seg.end_frame   = expected_start + duration_frames
                 changed = True
-                bpy.data.scenes["Scene"].frame_end = seg.end_frame
         prev_end = seg.end_frame
     return changed
 
