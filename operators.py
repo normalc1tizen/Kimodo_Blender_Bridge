@@ -706,6 +706,7 @@ class KIMODO_OT_AddSegment(Operator):
         if s.motion_segments:
             last = max(s.motion_segments, key=lambda seg: seg.end_frame)
             start = last.end_frame + 1
+            
 
         fps = scene.render.fps / scene.render.fps_base
         end = start + int(fps * 5) - 1  # default 5 seconds
@@ -951,6 +952,7 @@ def _enforce_segment_continuity(ordered_segs):
                 seg.start_frame = expected_start
                 seg.end_frame   = expected_start + duration_frames
                 changed = True
+                bpy.data.scenes["Scene"].frame_end = seg.end_frame
         prev_end = seg.end_frame
     return changed
 

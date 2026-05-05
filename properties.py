@@ -37,7 +37,14 @@ def _on_end_frame_update(self, context):
             duration = next_seg.end_frame - next_seg.start_frame
             next_seg.start_frame = self.end_frame + 1
             next_seg.end_frame = next_seg.start_frame + duration
+            
             break
+    
+    # Update scene frame_end if any segment's end_frame is larger
+    if segs:
+        max_end_frame = max(seg.end_frame for seg in segs)
+        if max_end_frame > context.scene.frame_end:
+            context.scene.frame_end = max_end_frame
 
 
 class KIMODO_MotionSegment(PropertyGroup):
