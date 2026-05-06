@@ -113,7 +113,12 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
         row = layout.row(align=True)
         row.label(text="Model:")
         row.prop(s, "model_type", expand=True)
-        row.prop(s, "seed", text="Seed")
+        # Show seed for the selected segment if available
+        if s.motion_segments and 0 <= s.segment_index < len(s.motion_segments):
+            selected_seg = s.motion_segments[s.segment_index]
+            row.prop(selected_seg, "seed", text="Seed")
+        else:
+            row.prop(s, "seed", text="Global Seed")
 
         # --- FPS warning ---
         scene_fps = context.scene.render.fps / context.scene.render.fps_base
@@ -184,11 +189,16 @@ class KIMODO_PT_Segments(KIMODO_PanelBase, Panel):
         layout.separator()
 
         # --- Generate buttons ---
+        layout.prop(s, "bvh_standard_tpose", icon='ARMATURE_DATA')
         layout.prop(s, "reuse_source_armature", icon='FILE_REFRESH')
+    
         gen_row = layout.row(align=True)
         gen_row.enabled = s.is_connected and not s.is_generating
-        gen_row.operator("kimodo.generate_segment",      text="Generate Selected", icon='PLAY')
-        gen_row.operator("kimodo.generate_all_segments", text="Generate All",      icon='FF')
+        #gen_row.operator("kimodo.generate_segment",      text="Generate Selected", icon='PLAY')
+        #use tpose button below
+        
+        gen_row.scale_y = 2
+        gen_row.operator("kimodo.generate_all_segments", text="Generate Motion",icon='PLAY')
 
         if s.is_generating:
             box2 = layout.box()
@@ -235,7 +245,7 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
 
         # BVH T-pose option (only show for BVH format)
         if s.output_format == "bvh":
-            layout.prop(s, "bvh_standard_tpose")
+            layout.prop(s, "bvh_standard_tpose", icon='ARMATURE_DATA')
 
         layout.separator()
 
@@ -265,7 +275,7 @@ class KIMODO_PT_Generate(KIMODO_PanelBase, Panel):
                 fps_box.label(text=f"Scene is {scene_fps:.4g} FPS — Kimodo needs 30 FPS", icon='ERROR')
                 fps_box.operator("kimodo.set_to_30fps", text="Set to 30 FPS", icon='RECOVER_LAST')
 
-            
+            row.scale_y = 2
             row.operator("kimodo.generate", text="Generate Motion", icon=connected_icon)
             if s.generation_progress:
                 layout.label(text=s.generation_progress,
@@ -299,7 +309,7 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
 
         add_types = [
             ('root2d',      "Root XZ",    'EMPTY_ARROWS'),
-            ('fullbody',    "Full-Body",  'ARMATURE_DATA'),
+            #('fullbody',    "Full-Body",  'ARMATURE_DATA'),
             ('left_hand',   "L.Hand",     'VIEW_PAN'),
             ('right_hand',  "R.Hand",     'VIEW_PAN'),
             ('left_foot',   "L.Foot",     'SNAP_FACE'),

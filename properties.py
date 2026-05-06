@@ -72,7 +72,7 @@ class KIMODO_MotionSegment(PropertyGroup):
         name="Model",
         items=[
             ("smpl",  "SOMA / SMPL",  "Standard human body skeleton"),
-            ("smplx", "SMPL-X",       "Extended body with hands and face"),
+            #("smplx", "SMPL-X",       "Extended body with hands and face"),
         ],
         default="smpl",
     )
@@ -211,8 +211,8 @@ class KIMODO_SceneSettings(PropertyGroup):
         description="Kimodo model to load into the bridge process",
         items=[
             ("Kimodo-SOMA-RP-v1",  "Kimodo SOMA",   "Standard human SOMA skeleton (recommended)"),
-            ("Kimodo-SMPLX-RP-v1", "Kimodo SMPL-X", "Extended body with hands and face"),
-            ("Kimodo-G1-RP-v1",    "Kimodo G1",     "Unitree G1 robot skeleton"),
+            ("Kimodo-SMPLX-RP-v1", "Kimodo SMPL-X (Unsupported atm)", "Extended body with hands and face"),
+            ("Kimodo-G1-RP-v1",    "Kimodo G1 (Unsupported atm)",     "Unitree G1 robot skeleton"),
         ],
         default="Kimodo-SOMA-RP-v1",
     )
@@ -228,7 +228,7 @@ class KIMODO_SceneSettings(PropertyGroup):
         description="Which Kimodo skeleton/model to use",
         items=[
             ("smpl",  "SOMA / SMPL",  "Standard human body skeleton (SOMA). Best for most use cases."),
-            ("smplx", "SMPL-X",       "Extended SMPL with hands and face. Requires Kimodo-SMPLX install."),
+            #("smplx", "SMPL-X",       "Extended SMPL with hands and face. Requires Kimodo-SMPLX install."),
         ],
         default="smpl",
     )
@@ -263,16 +263,16 @@ class KIMODO_SceneSettings(PropertyGroup):
     bvh_standard_tpose: BoolProperty(
         name="Use Standard T-Pose",
         description="Export BVH with standard T-pose rest pose instead of BONES-SEED pose (SOMA models only)",
-        default=False,
+        default=True,
     )
     reuse_source_armature: BoolProperty(
-        name="Reuse Existing Source",
+        name="Reuse Generated Armature",
         description=(
             "Apply the generated motion to the existing Kimodo_Source armature "
             "instead of creating a new one. Preserves retargeting constraints "
             "already pointing at that armature."
         ),
-        default=False,
+        default=True,
     )
 
     # Generation state (used by the modal operator)
