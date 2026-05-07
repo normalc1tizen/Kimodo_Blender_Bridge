@@ -62,7 +62,7 @@ which python   # e.g. /home/you/kimodo-env/bin/python
 
 ### 2 — Install the Blender addon
 
-1. Download or clone this repository.
+1. Download or clone this repository. (Top right "Code" -> "Download ZIP")
 2. Open Blender → **Edit → Preferences → Add-ons → Install from Disk…**
 3. Select the `Kimodo_Blender_Bridge` folder (zip it first if Blender asks for a `.zip`).
 4. Enable **"Kimodo Motion Generator"** in the add-on list.
