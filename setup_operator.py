@@ -22,9 +22,12 @@ from bpy.types import Operator
 # Paths
 # ---------------------------------------------------------------------------
 
-MANAGED_VENV  = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
-LLMVEC_DIR    = os.path.join(MANAGED_VENV, "llm2vec-model")
-KIMODO_GIT    = "https://github.com/Aero-Ex/kimodo.git"
+MANAGED_VENV     = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
+LLMVEC_DIR       = os.path.join(MANAGED_VENV, "llm2vec-model")
+KIMODO_GIT       = "https://github.com/Aero-Ex/kimodo.git"
+LLMVEC_MODEL_ID  = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
+# Placeholder string in Aero-Ex's llm2vec_wrapper.py that we replace with LLMVEC_DIR
+_WRAPPER_PLACEHOLDER = "path_to_your_Llama_text-encoders"
 
 # ---------------------------------------------------------------------------
 # Install state  (module-level; panels poll this via a redraw timer)
@@ -150,51 +153,26 @@ def _find_wrapper(venv_py: str) -> str:
 
 def _extract_hf_model_id(wrapper_path: str) -> str:
     """Read llm2vec_wrapper.py and extract the HuggingFace repo ID."""
-    with open(wrapper_path) as f:
-        text = f.read()
-
-    patterns = [
-        # snapshot_download("owner/repo-name")
-        r'snapshot_download\s*\(\s*["\']([^"\']+)["\']',
-        # from_pretrained("owner/repo-name")
-        r'from_pretrained\s*\(\s*["\']([^"\']+)["\']',
-        # any "owner/KIMODO..." string
-        r'["\']([A-Za-z0-9_\-]+/KIMODO[A-Za-z0-9_\-\.]+)["\']',
-        # any "owner/...llm2vec..." string
-        r'["\']([A-Za-z0-9_\-]+/[A-Za-z0-9_\-\.]*[Ll][Ll][Mm]2[Vv][Ee][Cc][A-Za-z0-9_\-\.]*)["\']',
-    ]
-    for pat in patterns:
-        m = re.search(pat, text)
-        if m:
-            return m.group(1)
-    return ""
+    # Kept for API compatibility; model ID is now hardcoded as LLMVEC_MODEL_ID.
+    return LLMVEC_MODEL_ID
 
 
 def _patch_wrapper(wrapper_path: str, local_dir: str) -> None:
     """
-    Set custom_dir in llm2vec_wrapper.py to *local_dir* so the model is
-    loaded from disk instead of downloaded from Hugging Face.
+    Replace the placeholder path in llm2vec_wrapper.py with *local_dir* so
+    the model loads from disk.  The Aero-Ex fork uses the literal string
+    'path_to_your_Llama_text-encoders' as the user-editable slot.
     """
     with open(wrapper_path) as f:
         text = f.read()
 
-    escaped = local_dir.replace("\\", "\\\\")
+    if _WRAPPER_PLACEHOLDER not in text:
+        _log("Warning: placeholder not found in llm2vec_wrapper.py — already patched?")
+        return
 
-    # Replace any existing assignment: custom_dir = <expr>
-    patched, n = re.subn(
-        r'(custom_dir\s*=\s*)[^\n]+',
-        lambda m: f'{m.group(1)}"{escaped}"',
-        text,
-    )
-    if n == 0:
-        # Variable not found — prepend it right after the last import block
-        last_import = max(
-            (m.end() for m in re.finditer(r'^(?:import|from)\s+\S+', text, re.M)),
-            default=0,
-        )
-        insert = f'\ncustom_dir = "{escaped}"\n'
-        patched = text[:last_import] + insert + text[last_import:]
-        _log("custom_dir not found — inserted after imports")
+    # Use a raw string so Windows backslashes survive the replacement.
+    safe_dir = local_dir.replace("\\", "\\\\")
+    patched = text.replace(_WRAPPER_PLACEHOLDER, safe_dir, 1)
 
     with open(wrapper_path, "w") as f:
         f.write(patched)
@@ -289,21 +267,14 @@ def _do_install() -> None:
             )
         _log(f"Found wrapper: {wrapper}")
 
-        # 8 — Determine HuggingFace model ID from the wrapper source
-        model_id = _extract_hf_model_id(wrapper)
-        if not model_id:
-            raise RuntimeError(
-                "Could not determine the LLM2Vec model ID from llm2vec_wrapper.py. "
-                "The Aero-Ex fork layout may have changed — please file an issue."
-            )
-        _log(f"LLM2Vec model ID: {model_id}")
-
-        # 9 — Download the model to a local folder
-        _log(f"Downloading LLM2Vec model to {LLMVEC_DIR}…  (can be several GB)")
+        # 8 — Download the LLM2Vec text-encoder model to a local folder.
+        #     The Aero-Ex fork hosts the model at Aero-Ex/KIMODO-Meta3_llm2vec_NF4
+        #     on HuggingFace.  We download it once and point the wrapper at it.
+        _log(f"Downloading LLM2Vec model ({LLMVEC_MODEL_ID}) — this may take a while…")
         os.makedirs(LLMVEC_DIR, exist_ok=True)
         dl_script = (
             "from huggingface_hub import snapshot_download; "
-            f"snapshot_download(repo_id={model_id!r}, local_dir={LLMVEC_DIR!r})"
+            f"snapshot_download(repo_id={LLMVEC_MODEL_ID!r}, local_dir={LLMVEC_DIR!r})"
         )
         _run([venv_py, "-c", dl_script], "Downloading LLM2Vec model")
 
