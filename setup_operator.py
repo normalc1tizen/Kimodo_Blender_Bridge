@@ -235,7 +235,14 @@ def _do_install() -> None:
             "Installing PyTorch",
         )
 
-        # 5 — Install Kimodo from Aero-Ex fork
+        # 5 — Install build tools (Kimodo has a C extension that requires CMake)
+        _log("Installing build tools (cmake, ninja)…")
+        _run(
+            [*_venv_pip(), "install", "cmake", "ninja"],
+            "Installing build tools",
+        )
+
+        # 6 — Install Kimodo from Aero-Ex fork
         #     The Aero-Ex fork ships pre-built motion-correction wheels and
         #     includes the offline LLM2Vec path hook.
         _log("Installing Kimodo (Aero-Ex offline fork)…")
@@ -244,7 +251,7 @@ def _do_install() -> None:
             "Installing Kimodo",
         )
 
-        # 6 — Locate llm2vec_wrapper.py
+        # 7 — Locate llm2vec_wrapper.py
         _log("Locating LLM2Vec wrapper in installed package…")
         wrapper = _find_wrapper(venv_py)
         if not wrapper:
@@ -254,7 +261,7 @@ def _do_install() -> None:
             )
         _log(f"Found wrapper: {wrapper}")
 
-        # 7 — Determine HuggingFace model ID from the wrapper source
+        # 8 — Determine HuggingFace model ID from the wrapper source
         model_id = _extract_hf_model_id(wrapper)
         if not model_id:
             raise RuntimeError(
@@ -263,7 +270,7 @@ def _do_install() -> None:
             )
         _log(f"LLM2Vec model ID: {model_id}")
 
-        # 8 — Download the model to a local folder
+        # 9 — Download the model to a local folder
         _log(f"Downloading LLM2Vec model to {LLMVEC_DIR}…  (can be several GB)")
         os.makedirs(LLMVEC_DIR, exist_ok=True)
         dl_script = (
@@ -272,12 +279,12 @@ def _do_install() -> None:
         )
         _run([venv_py, "-c", dl_script], "Downloading LLM2Vec model")
 
-        # 9 — Patch wrapper for fully offline operation
+        # 10 — Patch wrapper for fully offline operation
         _log("Patching llm2vec_wrapper.py for offline use…")
         _patch_wrapper(wrapper, LLMVEC_DIR)
         _log("Patch applied.")
 
-        # 10 — Update the addon's Python path on the main thread
+        # 11 — Update the addon's Python path on the main thread
         def _set_path():
             try:
                 for scene in bpy.data.scenes:
