@@ -104,7 +104,7 @@ def _find_system_python() -> str:
     return ""
 
 
-def _run(cmd: list, step: str) -> None:
+def _run(cmd: list, step: str, env: "dict | None" = None) -> None:
     """Run *cmd* as a subprocess, stream output to _log, raise on failure."""
     _log(f"▶ {step}")
     proc = subprocess.Popen(
@@ -113,6 +113,7 @@ def _run(cmd: list, step: str) -> None:
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        env=env,
     )
     for line in proc.stdout:
         stripped = line.rstrip()
@@ -246,13 +247,20 @@ def _do_install() -> None:
         )
 
         # 6 — Install Kimodo from Aero-Ex fork.
-        #     --no-build-isolation makes pip build inside the venv so it picks
-        #     up the cmake/ninja we just installed, instead of creating a fresh
-        #     temporary env that has no cmake.
+        #     --no-build-isolation makes pip use the venv directly instead of
+        #     creating a fresh isolated build env.  We also prepend the venv
+        #     Scripts/bin dir to PATH so that cmake.exe is visible to the
+        #     subprocess that setup.py spawns internally via check_output.
         _log("Installing Kimodo (Aero-Ex offline fork)…")
+        venv_bin = os.path.join(
+            MANAGED_VENV, "Scripts" if os.name == "nt" else "bin"
+        )
+        build_env = os.environ.copy()
+        build_env["PATH"] = venv_bin + os.pathsep + build_env.get("PATH", "")
         _run(
             [*_venv_pip(), "install", "--no-build-isolation", f"git+{KIMODO_GIT}"],
             "Installing Kimodo",
+            env=build_env,
         )
 
         # 7 — Locate llm2vec_wrapper.py
