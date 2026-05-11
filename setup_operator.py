@@ -283,7 +283,20 @@ def _do_install() -> None:
         _patch_wrapper(wrapper, LLMVEC_DIR)
         _log("Patch applied.")
 
-        # 11 — Update the addon's Python path on the main thread
+        # 11 — Download Kimodo model weights into the HF cache.
+        #      load_model.py calls snapshot_download unconditionally ("will check
+        #      online no matter what"), so the weights must be in the local cache
+        #      before we enable HF_HUB_OFFLINE at bridge launch time.
+        #      We only download the default SOMA model; the other two are
+        #      unsupported in the addon UI and can be fetched later if needed.
+        _log("Downloading Kimodo-SOMA-RP-v1 model weights — this may take a while…")
+        dl_weights = (
+            "from huggingface_hub import snapshot_download; "
+            "snapshot_download(repo_id='nvidia/Kimodo-SOMA-RP-v1')"
+        )
+        _run([venv_py, "-c", dl_weights], "Downloading Kimodo-SOMA-RP-v1 weights")
+
+        # 12 — Update the addon's Python path on the main thread
         def _set_path():
             try:
                 for scene in bpy.data.scenes:
