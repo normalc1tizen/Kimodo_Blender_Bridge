@@ -235,19 +235,23 @@ def _do_install() -> None:
             "Installing PyTorch",
         )
 
-        # 5 — Install build tools (Kimodo has a C extension that requires CMake)
-        _log("Installing build tools (cmake, ninja)…")
+        # 5 — Install build tools needed by Kimodo's C extension.
+        #     cmake/ninja are installed into the venv so they are on PATH.
+        #     setuptools/wheel are needed because we use --no-build-isolation
+        #     below (which skips pip's own isolated build env).
+        _log("Installing build tools (cmake, ninja, setuptools, wheel)…")
         _run(
-            [*_venv_pip(), "install", "cmake", "ninja"],
+            [*_venv_pip(), "install", "cmake", "ninja", "setuptools", "wheel"],
             "Installing build tools",
         )
 
-        # 6 — Install Kimodo from Aero-Ex fork
-        #     The Aero-Ex fork ships pre-built motion-correction wheels and
-        #     includes the offline LLM2Vec path hook.
+        # 6 — Install Kimodo from Aero-Ex fork.
+        #     --no-build-isolation makes pip build inside the venv so it picks
+        #     up the cmake/ninja we just installed, instead of creating a fresh
+        #     temporary env that has no cmake.
         _log("Installing Kimodo (Aero-Ex offline fork)…")
         _run(
-            [*_venv_pip(), "install", f"git+{KIMODO_GIT}"],
+            [*_venv_pip(), "install", "--no-build-isolation", f"git+{KIMODO_GIT}"],
             "Installing Kimodo",
         )
 
