@@ -251,16 +251,16 @@ def _do_install() -> None:
         #   bitsandbytes  — NF4 quantization for the LLM2Vec text encoder
         #   safetensors   — hard import in kimodo/model/loading.py (load_file)
         #   psutil        — top-level import in kimodo/demo/memory_manager.py
-        #   PyGLM         — lazy import in kimodo/exports/bvh.py (glm module)
-        #   SpatialTransform — lazy import in kimodo/exports/bvh.py
+        #
+        #   PyGLM / SpatialTransform are also imported in bvh.py but both
+        #   arrive transitively via bvhio (pyglm, spatial-transform) so they
+        #   do not need to be listed here.
         _log("Installing undeclared Kimodo dependencies…")
         _run(
             [*_venv_pip(), "install",
              "bitsandbytes>=0.46.1",
              "safetensors",
-             "psutil",
-             "PyGLM",
-             "SpatialTransform"],
+             "psutil"],
             "Installing undeclared dependencies",
         )
 
