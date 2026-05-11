@@ -27,56 +27,44 @@ The bridge server loads the Kimodo model once at startup and then responds to ge
 
 | Requirement | Notes |
 |---|---|
-| Blender 5.1+ | Tested on 5.1, Arch Linux. Should work on 4.x too. |
-| Python 3.10+ | Provided by the Kimodo venv — not Blender's Python |
+| Blender 4.0+ | Tested on 5.1 (Windows & Arch Linux) |
+| Python 3.10–3.12 | System Python used to create the managed venv |
 | NVIDIA GPU | 8 GB+ VRAM recommended; 16 GB+ for best results |
-| CUDA | Must match your PyTorch build |
-| Kimodo | Installed in a dedicated venv (see below) |
+| CUDA | Must match your PyTorch build (CUDA 12.1 installed by default) |
+| ~10 GB disk | For the managed venv, model weights, and LLM2Vec encoder |
 
-> **Low VRAM?** Run `kimodo_textencoder --device cpu` in a separate terminal before starting the bridge. This offloads the text encoder to CPU and frees several GB of VRAM.
+> **Low VRAM?** Run `kimodo_textencoder --device cpu` in a separate terminal with the Kimodo venv activated. This offloads the text encoder to CPU and frees several GB of VRAM.
 
 ---
 
 ## Installation
 
-### 1 — Install Kimodo
+As of v1.2.0 Kimodo installs itself automatically — no terminal required.
 
-Follow the [official Kimodo instructions](https://github.com/nv-tlabs/kimodo). The short version:
+### 1 — Install the Blender addon
 
-Note: Installe it via a python virtual environment and not via docker or other, as this has not been tested.
-
-```bash
-# Create a dedicated venv (conda or plain venv both work)
-python -m venv ~/kimodo-env
-source ~/kimodo-env/bin/activate
-
-# Install Kimodo and its dependencies
-pip install -e /path/to/kimodo-src
-```
-
-After installation, note the full path to the venv's Python binary — you will need it in step 3:
-
-```bash
-which python   # e.g. /home/you/kimodo-env/bin/python
-```
-
-### 2 — Install the Blender addon
-
-1. Download or clone this repository. (Top right "Code" -> "Download ZIP")
+1. Download or clone this repository (top-right **Code → Download ZIP**).
 2. Open Blender → **Edit → Preferences → Add-ons → Install from Disk…**
-3. Select the `Kimodo_Blender_Bridge` folder (zip it first if Blender asks for a `.zip`).
-4. Enable **"Kimodo Motion Generator"** in the add-on list.
+3. Select the downloaded zip and enable **"Kimodo Motion Generator"**.
 
-### 3 — Point the addon at your Kimodo Python
+### 2 — Click "Install Kimodo (Auto)"
 
-In the **Kimodo** tab of the **N-Panel** (press `N` in the 3D Viewport):
+Open the **Kimodo** N-Panel tab (press `N` in the 3D Viewport), expand **Connection**, and click **Install Kimodo (Auto)**.
 
-1. Expand **Connection**.
-2. Paste the path to your venv Python into the **Kimodo Python** field, e.g.:
-   ```
-   /home/you/kimodo-env/bin/python
-   ```
-   Leave it blank to let the addon auto-detect a `kimodo` executable on your `PATH`.
+The installer will:
+- Create a managed Python venv at `~/.kimodo-venv/`
+- Install PyTorch (CUDA 12.1), all Kimodo dependencies, and the [Aero-Ex offline fork](https://github.com/Aero-Ex/kimodo)
+- Download the LLM2Vec text-encoder model locally and patch it for offline use
+- Download the `Kimodo-SOMA-RP-v1` model weights into the HF cache
+- Set the Python path automatically when done
+
+Progress is shown live in the Connection panel. The full log is printed to the system console (launch Blender from a terminal, or on Windows use **Window → Toggle System Console**).
+
+> **Requires:** Python 3.10–3.12 on your system PATH, internet access, and ~10 GB of free disk space. After the initial install, Kimodo runs fully offline.
+
+### Manual installation (advanced)
+
+If you already have Kimodo installed in your own venv, skip the auto-installer and paste the path to your venv Python into the **Kimodo Python** field in the Connection panel.
 
 ---
 
@@ -160,8 +148,9 @@ To add a constraint:
 ## Troubleshooting
 
 **Bridge won't start / "Failed to start"**
+- Check the system console for `[Kimodo Bridge]` lines — the full Python/PyTorch error is printed there.
 - Check that the Python path points to the venv Python that has Kimodo installed.
-- Run the path manually in a terminal: `<python> bridge_server.py` — any import errors will print there.
+- If you used the auto-installer and it failed partway through, click **Retry Install** — it will wipe the partial venv and start clean.
 
 **CUDA out of memory**
 - Use a shorter duration or fewer segments.
@@ -188,6 +177,7 @@ To add a constraint:
 | `constraints.py` | Converts Blender constraint markers to Kimodo JSON |
 | `retarget.py` | Applies / bakes retargeting constraints |
 | `ui_list.py` | UIList helper for the bone mapping panel |
+| `setup_operator.py` | One-click auto-installer for Kimodo and all dependencies |
 
 ---
 
