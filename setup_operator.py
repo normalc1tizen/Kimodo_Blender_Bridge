@@ -245,7 +245,15 @@ def _do_install() -> None:
             _log("macOS: no pre-built wheel — motion_correction will build from source "
                  "(requires Xcode Command Line Tools)")
 
-        # 6 — Install Kimodo from Aero-Ex fork.
+        # 6 — Install bitsandbytes (needed for NF4 quantization of the LLM2Vec
+        #     text encoder; not declared in Kimodo's pyproject.toml).
+        _log("Installing bitsandbytes…")
+        _run(
+            [*_venv_pip(), "install", "bitsandbytes>=0.46.1"],
+            "Installing bitsandbytes",
+        )
+
+        # 7 — Install Kimodo from Aero-Ex fork.
         #     SKIP_MOTION_CORRECTION_IN_SETUP=1 tells setup.py not to rebuild
         #     motion_correction (we already installed it in step 5).
         _log("Installing Kimodo (Aero-Ex offline fork)…")
@@ -257,7 +265,19 @@ def _do_install() -> None:
             env=kimodo_env,
         )
 
-        # 7 — Locate llm2vec_wrapper.py
+        # 8 — Install the NVIDIA kimodo-viser fork.
+        #     PyPI viser does not have viser._timeline_api — that submodule is
+        #     exclusive to the nv-tlabs fork used by the Kimodo demo.
+        #     Kimodo lists this under [project.optional-dependencies] demo = [...],
+        #     so it is not pulled in by a plain pip install.
+        _log("Installing kimodo-viser fork (provides viser._timeline_api)…")
+        _run(
+            [*_venv_pip(), "install",
+             "git+https://github.com/nv-tlabs/kimodo-viser.git"],
+            "Installing kimodo-viser",
+        )
+
+        # 10 — Locate llm2vec_wrapper.py
         _log("Locating LLM2Vec wrapper in installed package…")
         wrapper = _find_wrapper(venv_py)
         if not wrapper:
@@ -267,7 +287,7 @@ def _do_install() -> None:
             )
         _log(f"Found wrapper: {wrapper}")
 
-        # 8 — Download the LLM2Vec text-encoder model to a local folder.
+        # 11 — Download the LLM2Vec text-encoder model to a local folder.
         #     The Aero-Ex fork hosts the model at Aero-Ex/KIMODO-Meta3_llm2vec_NF4
         #     on HuggingFace.  We download it once and point the wrapper at it.
         _log(f"Downloading LLM2Vec model ({LLMVEC_MODEL_ID}) — this may take a while…")
@@ -278,12 +298,12 @@ def _do_install() -> None:
         )
         _run([venv_py, "-c", dl_script], "Downloading LLM2Vec model")
 
-        # 10 — Patch wrapper for fully offline operation
+        # 12 — Patch wrapper for fully offline operation
         _log("Patching llm2vec_wrapper.py for offline use…")
         _patch_wrapper(wrapper, LLMVEC_DIR)
         _log("Patch applied.")
 
-        # 11 — Download Kimodo model weights into the HF cache.
+        # 13 — Download Kimodo model weights into the HF cache.
         #      load_model.py calls snapshot_download unconditionally ("will check
         #      online no matter what"), so the weights must be in the local cache
         #      before we enable HF_HUB_OFFLINE at bridge launch time.
@@ -296,7 +316,7 @@ def _do_install() -> None:
         )
         _run([venv_py, "-c", dl_weights], "Downloading Kimodo-SOMA-RP-v1 weights")
 
-        # 12 — Update the addon's Python path on the main thread
+        # 14 — Update the addon's Python path on the main thread
         def _set_path():
             try:
                 for scene in bpy.data.scenes:
