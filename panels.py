@@ -3,6 +3,8 @@ Kimodo Blender Bridge — Panels
 All N-panel UI panels in the 3D Viewport → Kimodo tab.
 """
 
+import os
+
 import bpy
 import json
 from bpy.types import Panel
@@ -32,6 +34,37 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
         s = context.scene.kimodo
 
         running = s.is_connected
+
+        # --- Auto-install section ---
+        from . import setup_operator as so
+
+        if so.is_installing():
+            box = layout.box()
+            box.label(text="Installing Kimodo…", icon='TIME')
+            box.label(text=so.install_status())
+            layout.separator(factor=0.5)
+
+        elif so.install_failed():
+            box = layout.box()
+            box.label(text="Installation failed", icon='ERROR')
+            box.label(text=so.install_status(), icon='BLANK1')
+            box.operator("kimodo.install_kimodo",
+                         text="Retry Install", icon='FILE_REFRESH')
+            layout.separator(factor=0.5)
+
+        elif not so.is_installed():
+            box = layout.box()
+            box.label(text="Kimodo not installed", icon='INFO')
+            box.label(text=f"Installs to:  ~/.kimodo-venv/")
+            box.label(text="Requires:  Python 3.10+, ~8 GB disk, internet")
+            box.operator("kimodo.install_kimodo", icon='IMPORT')
+            layout.separator(factor=0.5)
+
+        elif not s.python_executable or not os.path.isfile(s.python_executable):
+            box = layout.box()
+            box.label(text="Kimodo venv ready", icon='CHECKMARK')
+            box.operator("kimodo.use_installed_kimodo", icon='CONSOLE')
+            layout.separator(factor=0.5)
 
         # --- Python executable ---
         col = layout.column(align=True)

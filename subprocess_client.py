@@ -79,6 +79,7 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,      # line-buffered
+                env=_bridge_env(python),
             )
         except FileNotFoundError:
             _proc = None
@@ -266,6 +267,35 @@ def generate_motion_multi(
         return False, f"Failed to send request: {exc}"
 
     return _recv_until_done(progress_callback)
+
+
+# ---------------------------------------------------------------------------
+# Bridge environment
+# ---------------------------------------------------------------------------
+
+def _bridge_env(python_exe: str) -> dict:
+    """
+    Build the environment dict for the bridge subprocess.
+    When the managed venv is in use and its LLM2Vec model has been downloaded,
+    set TRANSFORMERS_OFFLINE=1 so the bridge never tries to reach the internet.
+    """
+    env = os.environ.copy()
+    try:
+        from . import setup_operator as _so
+        managed = _so.MANAGED_VENV
+        llmvec  = _so.LLMVEC_DIR
+    except ImportError:
+        managed = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
+        llmvec  = os.path.join(managed, "llm2vec-model")
+
+    using_managed = os.path.realpath(python_exe).startswith(
+        os.path.realpath(managed) + os.sep
+    )
+    if using_managed and os.path.isdir(llmvec):
+        env["TRANSFORMERS_OFFLINE"]  = "1"
+        env["HF_DATASETS_OFFLINE"]   = "1"
+
+    return env
 
 
 # ---------------------------------------------------------------------------
