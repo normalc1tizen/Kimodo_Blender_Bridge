@@ -236,31 +236,47 @@ def _do_install() -> None:
             "Installing PyTorch",
         )
 
-        # 5 — Install build tools needed by Kimodo's C extension.
-        #     cmake/ninja are installed into the venv so they are on PATH.
-        #     setuptools/wheel are needed because we use --no-build-isolation
-        #     below (which skips pip's own isolated build env).
-        _log("Installing build tools (cmake, ninja, setuptools, wheel)…")
-        _run(
-            [*_venv_pip(), "install", "cmake", "ninja", "setuptools", "wheel"],
-            "Installing build tools",
+        # 5 — Install the pre-built motion_correction wheel from Aero-Ex.
+        #     motion_correction is a C extension inside Kimodo's setup.py.
+        #     Building it from source requires MSVC on Windows (not just cmake),
+        #     so the Aero-Ex fork ships pre-built wheels for each Python version.
+        #     We install the wheel first; then tell setup.py to skip rebuilding it.
+        _log("Installing pre-built motion_correction wheel…")
+        r = subprocess.run(
+            [venv_py, "-c",
+             "import sys; print(f'cp{sys.version_info.major}{sys.version_info.minor}')"],
+            capture_output=True, text=True, timeout=5,
         )
+        py_tag = r.stdout.strip()  # e.g. "cp312"
+
+        if os.name == "nt":
+            platform_tag = "win_amd64"
+        elif sys.platform.startswith("linux"):
+            platform_tag = "manylinux_2_27_x86_64.manylinux_2_28_x86_64"
+        else:
+            platform_tag = None  # macOS: no pre-built wheel available
+
+        if platform_tag:
+            wheel_url = (
+                "https://github.com/Aero-Ex/kimodo/releases/download/v1.0.0/"
+                f"motion_correction-1.0.0-{py_tag}-{py_tag}-{platform_tag}.whl"
+            )
+            _log(f"Wheel: {wheel_url}")
+            _run([*_venv_pip(), "install", wheel_url], "Installing motion_correction")
+        else:
+            _log("macOS: no pre-built wheel — motion_correction will build from source "
+                 "(requires Xcode Command Line Tools)")
 
         # 6 — Install Kimodo from Aero-Ex fork.
-        #     --no-build-isolation makes pip use the venv directly instead of
-        #     creating a fresh isolated build env.  We also prepend the venv
-        #     Scripts/bin dir to PATH so that cmake.exe is visible to the
-        #     subprocess that setup.py spawns internally via check_output.
+        #     SKIP_MOTION_CORRECTION_IN_SETUP=1 tells setup.py not to rebuild
+        #     motion_correction (we already installed it in step 5).
         _log("Installing Kimodo (Aero-Ex offline fork)…")
-        venv_bin = os.path.join(
-            MANAGED_VENV, "Scripts" if os.name == "nt" else "bin"
-        )
-        build_env = os.environ.copy()
-        build_env["PATH"] = venv_bin + os.pathsep + build_env.get("PATH", "")
+        kimodo_env = os.environ.copy()
+        kimodo_env["SKIP_MOTION_CORRECTION_IN_SETUP"] = "1"
         _run(
-            [*_venv_pip(), "install", "--no-build-isolation", f"git+{KIMODO_GIT}"],
+            [*_venv_pip(), "install", f"git+{KIMODO_GIT}"],
             "Installing Kimodo",
-            env=build_env,
+            env=kimodo_env,
         )
 
         # 7 — Locate llm2vec_wrapper.py
