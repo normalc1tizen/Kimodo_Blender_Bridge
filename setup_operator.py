@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import traceback
 
 import bpy
 from bpy.types import Operator
@@ -34,6 +35,7 @@ _lock = threading.Lock()
 
 
 def _log(msg: str) -> None:
+    print(f"[Kimodo Install] {msg}", flush=True)
     with _lock:
         _state["lines"].append(msg)
         if len(_state["lines"]) > 12:
@@ -290,6 +292,8 @@ def _do_install() -> None:
         _log("Installation complete!  You can now click 'Start Kimodo'.")
 
     except Exception as exc:
+        tb = traceback.format_exc()
+        print(f"[Kimodo Install] FAILED:\n{tb}", flush=True)
         with _lock:
             _state["error"] = str(exc)
     finally:
@@ -314,6 +318,18 @@ class KIMODO_OT_InstallKimodo(Operator):
         if is_installing():
             self.report({"WARNING"}, "Installation is already in progress.")
             return {"CANCELLED"}
+
+        # If a previous attempt left a partial venv behind, remove it so we
+        # start clean.  Only do this when the previous run actually failed;
+        # never touch a venv the user set up themselves (done=True).
+        if install_failed() and os.path.isdir(MANAGED_VENV):
+            _log(f"Removing partial venv for clean retry: {MANAGED_VENV}")
+            try:
+                shutil.rmtree(MANAGED_VENV)
+            except Exception as exc:
+                self.report({"ERROR"}, f"Could not remove partial venv: {exc}")
+                return {"CANCELLED"}
+
         if is_installed():
             self.report({"INFO"}, "Managed Kimodo venv already exists.")
             return {"CANCELLED"}
