@@ -245,12 +245,23 @@ def _do_install() -> None:
             _log("macOS: no pre-built wheel — motion_correction will build from source "
                  "(requires Xcode Command Line Tools)")
 
-        # 6 — Install bitsandbytes (needed for NF4 quantization of the LLM2Vec
-        #     text encoder; not declared in Kimodo's pyproject.toml).
-        _log("Installing bitsandbytes…")
+        # 6 — Install packages that Kimodo imports but does not declare in
+        #     pyproject.toml (discovered by auditing every import in the source):
+        #
+        #   bitsandbytes  — NF4 quantization for the LLM2Vec text encoder
+        #   safetensors   — hard import in kimodo/model/loading.py (load_file)
+        #   psutil        — top-level import in kimodo/demo/memory_manager.py
+        #   PyGLM         — lazy import in kimodo/exports/bvh.py (glm module)
+        #   SpatialTransform — lazy import in kimodo/exports/bvh.py
+        _log("Installing undeclared Kimodo dependencies…")
         _run(
-            [*_venv_pip(), "install", "bitsandbytes>=0.46.1"],
-            "Installing bitsandbytes",
+            [*_venv_pip(), "install",
+             "bitsandbytes>=0.46.1",
+             "safetensors",
+             "psutil",
+             "PyGLM",
+             "SpatialTransform"],
+            "Installing undeclared dependencies",
         )
 
         # 7 — Install Kimodo from Aero-Ex fork.
