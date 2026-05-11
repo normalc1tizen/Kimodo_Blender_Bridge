@@ -79,6 +79,7 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
                 stderr=subprocess.PIPE,
                 text=True,
                 bufsize=1,      # line-buffered
+                env=_bridge_env(python),
             )
         except FileNotFoundError:
             _proc = None
@@ -87,21 +88,23 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
             _proc = None
             return False, f"Failed to launch bridge: {exc}"
 
-    # Drain stderr in background to prevent pipe deadlock
+    # Stream stderr to the console in a background thread so errors from
+    # PyTorch / Kimodo are visible without blocking the stdout reader.
     def _drain():
-        for _ in _proc.stderr:
-            pass
+        for line in _proc.stderr:
+            line = line.rstrip()
+            if line:
+                print(f"[Kimodo Bridge] {line}", flush=True)
     threading.Thread(target=_drain, daemon=True).start()
 
     # Wait for "ready" or "error"
     deadline = time.monotonic() + 420   # 7-min ceiling (large models, slow GPU)
     while time.monotonic() < deadline:
         if _proc.poll() is not None:
-            try:
-                tail = _proc.stderr.read(800)
-            except Exception:
-                tail = ""
-            _status = f"Process exited early. stderr: {tail}"
+            # Give the stderr drain thread a moment to flush remaining lines
+            time.sleep(0.2)
+            _status = f"Process exited early (code {_proc.returncode}) — see console for details"
+            print(f"[Kimodo Bridge] ERROR: {_status}", flush=True)
             return False, _status
 
         msg = _recv()
@@ -113,6 +116,7 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
 
         if s == "loading":
             _status = msg.get("message", "Loading…")
+            print(f"[Kimodo Bridge] {_status}", flush=True)
             if progress_callback:
                 progress_callback(_status)
 
@@ -123,13 +127,18 @@ def start(python_exe: str, model_name: str, progress_callback=None) -> "tuple[bo
                 f"on {msg.get('device', '?')} "
                 f"({msg.get('fps', '?')} fps)"
             )
+            print(f"[Kimodo Bridge] {_status}", flush=True)
             return True, _status
 
         elif s == "error":
             err = msg.get("message", "Unknown error")
             _status = f"Failed: {err}"
+            print(f"[Kimodo Bridge] ERROR: {_status}", flush=True)
             stop()
             return False, _status
+
+        else:
+            print(f"[Kimodo Bridge] {msg}", flush=True)
 
     stop()
     return False, "Timed out waiting for Kimodo (>7 min)"
@@ -266,6 +275,35 @@ def generate_motion_multi(
         return False, f"Failed to send request: {exc}"
 
     return _recv_until_done(progress_callback)
+
+
+# ---------------------------------------------------------------------------
+# Bridge environment
+# ---------------------------------------------------------------------------
+
+def _bridge_env(python_exe: str) -> dict:
+    """
+    Build the environment dict for the bridge subprocess.
+    When the managed venv is in use and its LLM2Vec model has been downloaded,
+    set TRANSFORMERS_OFFLINE=1 so the bridge never tries to reach the internet.
+    """
+    env = os.environ.copy()
+    try:
+        from . import setup_operator as _so
+        managed = _so.MANAGED_VENV
+        llmvec  = _so.LLMVEC_DIR
+    except ImportError:
+        managed = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
+        llmvec  = os.path.join(managed, "llm2vec-model")
+
+    using_managed = os.path.realpath(python_exe).startswith(
+        os.path.realpath(managed) + os.sep
+    )
+    if using_managed and os.path.isdir(llmvec):
+        env["TRANSFORMERS_OFFLINE"]  = "1"
+        env["HF_DATASETS_OFFLINE"]   = "1"
+
+    return env
 
 
 # ---------------------------------------------------------------------------

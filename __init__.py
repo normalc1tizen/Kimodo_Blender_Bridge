@@ -42,12 +42,14 @@ import bpy
 
 # Sub-modules (imported after bl_info for Blender's enable/disable system)
 from . import properties, operators, ui_list, panels, constraints, timeline
+from . import setup_operator
 from . import subprocess_client as sc
 
 
 def register():
     properties.register()
     operators.register()
+    setup_operator.register()
     ui_list.register()
     panels.register()
     timeline.register()
@@ -59,5 +61,6 @@ def unregister():
     timeline.unregister()
     panels.unregister()
     ui_list.unregister()
+    setup_operator.unregister()
     operators.unregister()
     properties.unregister()
