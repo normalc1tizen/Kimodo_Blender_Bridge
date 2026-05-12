@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.3.1] — 2026-05-12
+
+### Fixed
+
+- **Desktop-launch compatibility**: Blender launched from a desktop environment (via `.desktop` file, app menu, or file manager) inherits a stripped PATH from the display manager — standard tools like `pip`, `venv`, `git`, and `nvidia-smi` were not found, breaking the installer. A `_build_env()` helper now ensures every subprocess spawned by the plugin receives a complete PATH (including `/usr/local/bin`, `/usr/bin`, `/bin`, etc.) and a valid `HOME`, regardless of how Blender was started.
+- **Python detection in desktop sessions**: `_find_system_python()` now probes known install directories (`/usr/bin`, `/usr/local/bin`, `~/.local/bin`, `~/.pyenv/shims`) in addition to `shutil.which`, so Python interpreters installed outside the display manager's minimal PATH are still discovered.
+
+---
+
 ## [1.3.0] — 2026-05-12
 
 ### Windows improvements

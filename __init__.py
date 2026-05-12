@@ -27,7 +27,7 @@ Usage:
 bl_info = {
     "name":        "Kimodo Motion Generator",
     "author":      "Kimodo Blender Bridge",
-    "version":     (1, 3, 0),
+    "version":     (1, 3, 1),
     "blender":     (4, 0, 0),
     "location":    "View3D › Sidebar (N-Panel) › Kimodo",
     "description": "Generate human motion with NVIDIA Kimodo AI. "
