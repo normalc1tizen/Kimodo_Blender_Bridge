@@ -54,7 +54,8 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
                 box.separator(factor=0.3)
                 box.label(text="No compatible Python was found on your system.")
                 box.label(text="Click below to download the Python 3.12 installer (Windows 64-bit).")
-                box.label(text='Run it and tick "Add Python to PATH".')
+                box.label(text='Run it, tick "Add Python to PATH".')
+                box.label(text="On Windows: run the installer as Administrator.")
                 box.label(text="Then restart Blender before clicking Retry Install.", icon='ERROR')
                 box.separator(factor=0.3)
                 box.operator("kimodo.open_python_download",
