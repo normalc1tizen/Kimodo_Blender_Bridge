@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.3.0] — 2026-05-12
+
+### Windows improvements
+
+- **Python detection**: Skip Windows App Execution Alias stubs (`%LOCALAPPDATA%\Microsoft\WindowsApps`) that point to the Store instead of a real interpreter, preventing broken venv creation.
+- **Python install prompt**: When no Python 3.10+ is found, the Connection panel shows a prominent download button linking directly to the Python 3.12 Windows installer, with instructions to tick "Add Python to PATH" and run as Administrator.
+- **Python 3.13 support**: Python 3.13 is now accepted alongside 3.10–3.12.
+- **Architecture-aware installer link**: The download button serves the `arm64` installer on ARM machines and `amd64` everywhere else.
+- **Git-less install fallback**: When `git` is not on `PATH`, Kimodo and kimodo-viser are installed via GitHub's zip-archive endpoint instead of `git+https://`, so the installer works on stock Windows without Git.
+- **Partial/broken venv recovery**: A sentinel file (`.kimodo_install_complete`) is written only on successful install. On the next session, any venv missing the sentinel is treated as broken and wiped on retry — no more silent failures after a mid-install crash.
+- **NVIDIA GPU gate**: The install button is disabled and a clear error is shown when no NVIDIA GPU is detected (`nvidia-smi` not found or returns no GPUs). AMD/Intel users see an explicit "not supported" message instead of a cryptic CUDA error later.
+- **GPU check on Start**: Clicking *Start Kimodo* also checks for a CUDA-capable GPU and fails fast with a readable error if none is found.
+- **Blender restart reminder**: After the Python installer download prompt, the panel reminds users to restart Blender before clicking *Retry Install*.
+
+---
+
 ## [1.2.0] — 2026-05-11
 
 ### Added
