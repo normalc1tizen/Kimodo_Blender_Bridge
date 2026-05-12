@@ -44,20 +44,48 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
             box.label(text=so.install_status())
             layout.separator(factor=0.5)
 
-        elif so.install_failed():
+        elif so.install_failed() or (so.venv_exists() and not so.is_installed()):
+            # install_failed()  → failed this session
+            # venv_exists() but not is_installed() → partial venv from a
+            # previous session (no sentinel file); treat it the same way.
             box = layout.box()
-            box.label(text="Installation failed", icon='ERROR')
-            box.label(text=so.install_status(), icon='BLANK1')
+            if so.needs_python():
+                box.label(text="Python 3.10–3.12 required!", icon='ERROR')
+                box.separator(factor=0.3)
+                box.label(text="No compatible Python was found on your system.")
+                box.label(text="Click below to download the Python 3.12 installer (Windows 64-bit).")
+                box.label(text='Run it, tick "Add Python to PATH".')
+                box.label(text="On Windows: run the installer as Administrator.")
+                box.label(text="Then restart Blender before clicking Retry Install.", icon='ERROR')
+                box.separator(factor=0.3)
+                box.operator("kimodo.open_python_download",
+                             text="Download Python 3.12 Installer", icon='URL')
+                box.separator(factor=0.3)
+            else:
+                box.label(text="Installation incomplete", icon='ERROR')
+                if so.install_status():
+                    box.label(text=so.install_status(), icon='BLANK1')
             box.operator("kimodo.install_kimodo",
                          text="Retry Install", icon='FILE_REFRESH')
+            box.operator("kimodo.reset_venv",
+                         text="Reset Venv", icon='TRASH')
             layout.separator(factor=0.5)
 
         elif not so.is_installed():
             box = layout.box()
-            box.label(text="Kimodo not installed", icon='INFO')
-            box.label(text=f"Installs to:  ~/.kimodo-venv/")
+            has_gpu = so.has_nvidia_gpu()
+            if not has_gpu:
+                box.label(text="NVIDIA GPU required!", icon='ERROR')
+                box.label(text="Kimodo only works with NVIDIA GPUs (CUDA).")
+                box.label(text="AMD and Intel GPUs are not supported.")
+                box.separator(factor=0.3)
+            else:
+                box.label(text="Kimodo not installed", icon='INFO')
+            box.label(text="Installs to:  ~/.kimodo-venv/")
             box.label(text="Requires:  Python 3.10+, ~8 GB disk, internet")
-            box.operator("kimodo.install_kimodo", icon='IMPORT')
+            row = box.row()
+            row.enabled = has_gpu
+            row.operator("kimodo.install_kimodo", icon='IMPORT')
             layout.separator(factor=0.5)
 
         elif not s.python_executable or not os.path.isfile(s.python_executable):

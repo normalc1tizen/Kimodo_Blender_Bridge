@@ -22,10 +22,11 @@ from bpy.types import Operator
 # Paths
 # ---------------------------------------------------------------------------
 
-MANAGED_VENV     = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
-LLMVEC_DIR       = os.path.join(MANAGED_VENV, "llm2vec-model")
-KIMODO_GIT       = "https://github.com/Aero-Ex/kimodo.git"
-LLMVEC_MODEL_ID  = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
+MANAGED_VENV        = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
+LLMVEC_DIR          = os.path.join(MANAGED_VENV, "llm2vec-model")
+LLMVEC_MODEL_ID     = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
+# Written at the very end of a successful install; absence means partial/broken.
+_SENTINEL           = os.path.join(MANAGED_VENV, ".kimodo_install_complete")
 # Placeholder string in Aero-Ex's llm2vec_wrapper.py that we replace with LLMVEC_DIR
 _WRAPPER_PLACEHOLDER = "path_to_your_Llama_text-encoders"
 
@@ -33,7 +34,8 @@ _WRAPPER_PLACEHOLDER = "path_to_your_Llama_text-encoders"
 # Install state  (module-level; panels poll this via a redraw timer)
 # ---------------------------------------------------------------------------
 
-_state: dict = {"running": False, "lines": [], "error": "", "done": False}
+_state: dict = {"running": False, "lines": [], "error": "", "done": False,
+                "needs_python": False}
 _lock = threading.Lock()
 
 
@@ -67,6 +69,11 @@ def install_failed() -> bool:
         return bool(_state["error"])
 
 
+def needs_python() -> bool:
+    with _lock:
+        return _state["needs_python"]
+
+
 def managed_python() -> str:
     """Return path to the managed-venv Python, or '' if not present."""
     for rel in ("bin/python3", "bin/python", "Scripts/python.exe"):
@@ -76,8 +83,26 @@ def managed_python() -> str:
     return ""
 
 
+def has_nvidia_gpu() -> bool:
+    """Return True if an NVIDIA GPU is present (nvidia-smi responds)."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, timeout=5,
+        )
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
+def venv_exists() -> bool:
+    """True if the venv directory is present (even if install is incomplete)."""
+    return os.path.isdir(MANAGED_VENV)
+
+
 def is_installed() -> bool:
-    return bool(managed_python())
+    """True only when the venv has a Python binary AND the install completed."""
+    return bool(managed_python()) and os.path.isfile(_SENTINEL)
 
 
 # ---------------------------------------------------------------------------
@@ -87,9 +112,14 @@ def is_installed() -> bool:
 def _find_system_python() -> str:
     """Return a system Python ≥ 3.10 that is not Blender's bundled Python."""
     blender_py = os.path.realpath(sys.executable)
-    for name in ("python3.12", "python3.11", "python3.10", "python3", "python"):
+    for name in ("python3.12", "python3.13", "python3.11", "python3.10", "python3", "python"):
         found = shutil.which(name)
         if not found:
+            continue
+        # Skip Windows App Execution Alias stubs — they live under
+        # %LOCALAPPDATA%\Microsoft\WindowsApps and open the Store instead of
+        # running a real interpreter, which breaks venv creation and pip.
+        if os.name == "nt" and "windowsapps" in found.lower():
             continue
         if os.path.realpath(found) == blender_py:
             continue
@@ -105,6 +135,28 @@ def _find_system_python() -> str:
         except Exception:
             pass
     return ""
+
+
+def _git_available() -> bool:
+    """Return True if git is on PATH and runnable."""
+    try:
+        r = subprocess.run(
+            ["git", "--version"], capture_output=True, timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _github_install_url(owner: str, repo: str) -> str:
+    """
+    Return a pip-installable URL for a GitHub repo.  Uses the git+https form
+    when git is available; falls back to the zip archive (no git required).
+    """
+    if _git_available():
+        return f"git+https://github.com/{owner}/{repo}.git"
+    # GitHub serves the default branch as a zip that pip can install directly.
+    return f"https://github.com/{owner}/{repo}/archive/HEAD.zip"
 
 
 def _run(cmd: list, step: str, env: "dict | None" = None) -> None:
@@ -189,10 +241,12 @@ def _do_install() -> None:
         _log("Searching for system Python 3.10+…")
         sys_py = _find_system_python()
         if not sys_py:
+            with _lock:
+                _state["needs_python"] = True
             raise RuntimeError(
-                "No Python 3.10+ found on PATH. "
-                "Install Python 3.10–3.12 and make sure it is on your PATH, "
-                "then try again."
+                "No Python 3.10–3.12 found. "
+                "Install it from python.org (tick 'Add Python to PATH'), "
+                "then click Retry Install."
             )
         _log(f"Found: {sys_py}")
 
@@ -267,11 +321,12 @@ def _do_install() -> None:
         # 7 — Install Kimodo from Aero-Ex fork.
         #     SKIP_MOTION_CORRECTION_IN_SETUP=1 tells setup.py not to rebuild
         #     motion_correction (we already installed it in step 5).
-        _log("Installing Kimodo (Aero-Ex offline fork)…")
+        kimodo_url = _github_install_url("Aero-Ex", "kimodo")
+        _log(f"Installing Kimodo (Aero-Ex offline fork) via {kimodo_url}…")
         kimodo_env = os.environ.copy()
         kimodo_env["SKIP_MOTION_CORRECTION_IN_SETUP"] = "1"
         _run(
-            [*_venv_pip(), "install", f"git+{KIMODO_GIT}"],
+            [*_venv_pip(), "install", kimodo_url],
             "Installing Kimodo",
             env=kimodo_env,
         )
@@ -281,10 +336,10 @@ def _do_install() -> None:
         #     exclusive to the nv-tlabs fork used by the Kimodo demo.
         #     Kimodo lists this under [project.optional-dependencies] demo = [...],
         #     so it is not pulled in by a plain pip install.
-        _log("Installing kimodo-viser fork (provides viser._timeline_api)…")
+        viser_url = _github_install_url("nv-tlabs", "kimodo-viser")
+        _log(f"Installing kimodo-viser fork via {viser_url}…")
         _run(
-            [*_venv_pip(), "install",
-             "git+https://github.com/nv-tlabs/kimodo-viser.git"],
+            [*_venv_pip(), "install", viser_url],
             "Installing kimodo-viser",
         )
 
@@ -337,6 +392,10 @@ def _do_install() -> None:
                 pass
         bpy.app.timers.register(_set_path, first_interval=0.1)
 
+        # Mark the install as complete so a partial venv is never mistaken for
+        # a successful one after a Blender restart.
+        open(_SENTINEL, "w").close()
+
         with _lock:
             _state["done"] = True
         _log("Installation complete!  You can now click 'Start Kimodo'.")
@@ -369,10 +428,10 @@ class KIMODO_OT_InstallKimodo(Operator):
             self.report({"WARNING"}, "Installation is already in progress.")
             return {"CANCELLED"}
 
-        # If a previous attempt left a partial venv behind, remove it so we
-        # start clean.  Only do this when the previous run actually failed;
-        # never touch a venv the user set up themselves (done=True).
-        if install_failed() and os.path.isdir(MANAGED_VENV):
+        # Remove any partial venv so we always start clean on a retry.
+        # A complete install is guarded by the sentinel file; if that's absent
+        # the venv is broken and safe to wipe regardless of session state.
+        if venv_exists() and not is_installed():
             _log(f"Removing partial venv for clean retry: {MANAGED_VENV}")
             try:
                 shutil.rmtree(MANAGED_VENV)
@@ -385,7 +444,7 @@ class KIMODO_OT_InstallKimodo(Operator):
             return {"CANCELLED"}
 
         with _lock:
-            _state.update(running=True, lines=[], error="", done=False)
+            _state.update(running=True, lines=[], error="", done=False, needs_python=False)
 
         threading.Thread(target=_do_install, daemon=True).start()
 
@@ -417,11 +476,56 @@ class KIMODO_OT_UseInstalledKimodo(Operator):
         return {"FINISHED"}
 
 
+class KIMODO_OT_ResetVenv(Operator):
+    bl_idname      = "kimodo.reset_venv"
+    bl_label       = "Reset Venv"
+    bl_description = (
+        "Delete ~/.kimodo-venv and allow a fresh install. "
+        "Use this when a previous install failed or is stuck."
+    )
+
+    def execute(self, context):
+        if is_installing():
+            self.report({"WARNING"}, "Cannot reset while installation is in progress.")
+            return {"CANCELLED"}
+        if not venv_exists():
+            self.report({"INFO"}, "No venv found — nothing to reset.")
+            return {"CANCELLED"}
+        try:
+            shutil.rmtree(MANAGED_VENV)
+        except Exception as exc:
+            self.report({"ERROR"}, f"Could not remove venv: {exc}")
+            return {"CANCELLED"}
+        with _lock:
+            _state.update(running=False, lines=[], error="", done=False)
+        self.report({"INFO"}, f"Removed {MANAGED_VENV} — ready for a fresh install.")
+        return {"FINISHED"}
+
+
+class KIMODO_OT_OpenPythonDownload(Operator):
+    bl_idname      = "kimodo.open_python_download"
+    bl_label       = "Download Python 3.12"
+    bl_description = "Open python.org/downloads in your browser"
+
+    def execute(self, context):
+        import platform, webbrowser
+        arch = "arm64" if platform.machine().lower() == "arm64" else "amd64"
+        webbrowser.open(
+            f"https://www.python.org/ftp/python/3.12.10/python-3.12.10-{arch}.exe"
+        )
+        return {"FINISHED"}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
-_classes = [KIMODO_OT_InstallKimodo, KIMODO_OT_UseInstalledKimodo]
+_classes = [
+    KIMODO_OT_InstallKimodo,
+    KIMODO_OT_UseInstalledKimodo,
+    KIMODO_OT_ResetVenv,
+    KIMODO_OT_OpenPythonDownload,
+]
 
 
 def register():
