@@ -91,6 +91,11 @@ def _find_system_python() -> str:
         found = shutil.which(name)
         if not found:
             continue
+        # Skip Windows App Execution Alias stubs — they live under
+        # %LOCALAPPDATA%\Microsoft\WindowsApps and open the Store instead of
+        # running a real interpreter, which breaks venv creation and pip.
+        if os.name == "nt" and "windowsapps" in found.lower():
+            continue
         if os.path.realpath(found) == blender_py:
             continue
         try:
