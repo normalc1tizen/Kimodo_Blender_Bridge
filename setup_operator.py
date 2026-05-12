@@ -22,10 +22,12 @@ from bpy.types import Operator
 # Paths
 # ---------------------------------------------------------------------------
 
-MANAGED_VENV     = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
-LLMVEC_DIR       = os.path.join(MANAGED_VENV, "llm2vec-model")
-KIMODO_GIT       = "https://github.com/Aero-Ex/kimodo.git"
-LLMVEC_MODEL_ID  = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
+MANAGED_VENV        = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
+LLMVEC_DIR          = os.path.join(MANAGED_VENV, "llm2vec-model")
+KIMODO_GIT          = "https://github.com/Aero-Ex/kimodo.git"
+LLMVEC_MODEL_ID     = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
+# Written at the very end of a successful install; absence means partial/broken.
+_SENTINEL           = os.path.join(MANAGED_VENV, ".kimodo_install_complete")
 # Placeholder string in Aero-Ex's llm2vec_wrapper.py that we replace with LLMVEC_DIR
 _WRAPPER_PLACEHOLDER = "path_to_your_Llama_text-encoders"
 
@@ -76,8 +78,14 @@ def managed_python() -> str:
     return ""
 
 
+def venv_exists() -> bool:
+    """True if the venv directory is present (even if install is incomplete)."""
+    return os.path.isdir(MANAGED_VENV)
+
+
 def is_installed() -> bool:
-    return bool(managed_python())
+    """True only when the venv has a Python binary AND the install completed."""
+    return bool(managed_python()) and os.path.isfile(_SENTINEL)
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +350,10 @@ def _do_install() -> None:
                 pass
         bpy.app.timers.register(_set_path, first_interval=0.1)
 
+        # Mark the install as complete so a partial venv is never mistaken for
+        # a successful one after a Blender restart.
+        open(_SENTINEL, "w").close()
+
         with _lock:
             _state["done"] = True
         _log("Installation complete!  You can now click 'Start Kimodo'.")
@@ -374,10 +386,10 @@ class KIMODO_OT_InstallKimodo(Operator):
             self.report({"WARNING"}, "Installation is already in progress.")
             return {"CANCELLED"}
 
-        # If a previous attempt left a partial venv behind, remove it so we
-        # start clean.  Only do this when the previous run actually failed;
-        # never touch a venv the user set up themselves (done=True).
-        if install_failed() and os.path.isdir(MANAGED_VENV):
+        # Remove any partial venv so we always start clean on a retry.
+        # A complete install is guarded by the sentinel file; if that's absent
+        # the venv is broken and safe to wipe regardless of session state.
+        if venv_exists() and not is_installed():
             _log(f"Removing partial venv for clean retry: {MANAGED_VENV}")
             try:
                 shutil.rmtree(MANAGED_VENV)
@@ -422,11 +434,37 @@ class KIMODO_OT_UseInstalledKimodo(Operator):
         return {"FINISHED"}
 
 
+class KIMODO_OT_ResetVenv(Operator):
+    bl_idname      = "kimodo.reset_venv"
+    bl_label       = "Reset Venv"
+    bl_description = (
+        "Delete ~/.kimodo-venv and allow a fresh install. "
+        "Use this when a previous install failed or is stuck."
+    )
+
+    def execute(self, context):
+        if is_installing():
+            self.report({"WARNING"}, "Cannot reset while installation is in progress.")
+            return {"CANCELLED"}
+        if not venv_exists():
+            self.report({"INFO"}, "No venv found — nothing to reset.")
+            return {"CANCELLED"}
+        try:
+            shutil.rmtree(MANAGED_VENV)
+        except Exception as exc:
+            self.report({"ERROR"}, f"Could not remove venv: {exc}")
+            return {"CANCELLED"}
+        with _lock:
+            _state.update(running=False, lines=[], error="", done=False)
+        self.report({"INFO"}, f"Removed {MANAGED_VENV} — ready for a fresh install.")
+        return {"FINISHED"}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
-_classes = [KIMODO_OT_InstallKimodo, KIMODO_OT_UseInstalledKimodo]
+_classes = [KIMODO_OT_InstallKimodo, KIMODO_OT_UseInstalledKimodo, KIMODO_OT_ResetVenv]
 
 
 def register():

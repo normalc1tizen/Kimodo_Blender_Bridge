@@ -44,12 +44,18 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
             box.label(text=so.install_status())
             layout.separator(factor=0.5)
 
-        elif so.install_failed():
+        elif so.install_failed() or (so.venv_exists() and not so.is_installed()):
+            # install_failed()  → failed this session
+            # venv_exists() but not is_installed() → partial venv from a
+            # previous session (no sentinel file); treat it the same way.
             box = layout.box()
-            box.label(text="Installation failed", icon='ERROR')
-            box.label(text=so.install_status(), icon='BLANK1')
+            box.label(text="Installation incomplete", icon='ERROR')
+            if so.install_status():
+                box.label(text=so.install_status(), icon='BLANK1')
             box.operator("kimodo.install_kimodo",
                          text="Retry Install", icon='FILE_REFRESH')
+            box.operator("kimodo.reset_venv",
+                         text="Reset Venv", icon='TRASH')
             layout.separator(factor=0.5)
 
         elif not so.is_installed():
