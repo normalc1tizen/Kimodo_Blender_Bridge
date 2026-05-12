@@ -24,7 +24,6 @@ from bpy.types import Operator
 
 MANAGED_VENV        = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
 LLMVEC_DIR          = os.path.join(MANAGED_VENV, "llm2vec-model")
-KIMODO_GIT          = "https://github.com/Aero-Ex/kimodo.git"
 LLMVEC_MODEL_ID     = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
 # Written at the very end of a successful install; absence means partial/broken.
 _SENTINEL           = os.path.join(MANAGED_VENV, ".kimodo_install_complete")
@@ -118,6 +117,28 @@ def _find_system_python() -> str:
         except Exception:
             pass
     return ""
+
+
+def _git_available() -> bool:
+    """Return True if git is on PATH and runnable."""
+    try:
+        r = subprocess.run(
+            ["git", "--version"], capture_output=True, timeout=5,
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def _github_install_url(owner: str, repo: str) -> str:
+    """
+    Return a pip-installable URL for a GitHub repo.  Uses the git+https form
+    when git is available; falls back to the zip archive (no git required).
+    """
+    if _git_available():
+        return f"git+https://github.com/{owner}/{repo}.git"
+    # GitHub serves the default branch as a zip that pip can install directly.
+    return f"https://github.com/{owner}/{repo}/archive/HEAD.zip"
 
 
 def _run(cmd: list, step: str, env: "dict | None" = None) -> None:
@@ -280,11 +301,12 @@ def _do_install() -> None:
         # 7 — Install Kimodo from Aero-Ex fork.
         #     SKIP_MOTION_CORRECTION_IN_SETUP=1 tells setup.py not to rebuild
         #     motion_correction (we already installed it in step 5).
-        _log("Installing Kimodo (Aero-Ex offline fork)…")
+        kimodo_url = _github_install_url("Aero-Ex", "kimodo")
+        _log(f"Installing Kimodo (Aero-Ex offline fork) via {kimodo_url}…")
         kimodo_env = os.environ.copy()
         kimodo_env["SKIP_MOTION_CORRECTION_IN_SETUP"] = "1"
         _run(
-            [*_venv_pip(), "install", f"git+{KIMODO_GIT}"],
+            [*_venv_pip(), "install", kimodo_url],
             "Installing Kimodo",
             env=kimodo_env,
         )
@@ -294,10 +316,10 @@ def _do_install() -> None:
         #     exclusive to the nv-tlabs fork used by the Kimodo demo.
         #     Kimodo lists this under [project.optional-dependencies] demo = [...],
         #     so it is not pulled in by a plain pip install.
-        _log("Installing kimodo-viser fork (provides viser._timeline_api)…")
+        viser_url = _github_install_url("nv-tlabs", "kimodo-viser")
+        _log(f"Installing kimodo-viser fork via {viser_url}…")
         _run(
-            [*_venv_pip(), "install",
-             "git+https://github.com/nv-tlabs/kimodo-viser.git"],
+            [*_venv_pip(), "install", viser_url],
             "Installing kimodo-viser",
         )
 
