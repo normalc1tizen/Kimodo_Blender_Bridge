@@ -22,6 +22,50 @@ from bpy.types import Operator
 # Paths
 # ---------------------------------------------------------------------------
 
+# Standard system binary directories that desktop-launched processes often
+# lack in PATH because display managers (GDM, SDDM, LightDM) only set a
+# minimal environment — unlike a login shell which sources ~/.profile.
+_SYSTEM_BIN_PATHS = [
+    "/usr/local/bin", "/usr/bin", "/bin",
+    "/usr/local/sbin", "/usr/sbin", "/sbin",
+]
+
+# Common locations where Python interpreters are installed outside of PATH
+# (pyenv, deadsnakes PPA, system Python on various distros).
+_EXTRA_PYTHON_DIRS = [
+    "/usr/bin",
+    "/usr/local/bin",
+    os.path.expanduser("~/.local/bin"),
+    os.path.expanduser("~/.pyenv/shims"),
+]
+
+
+def _build_env(extra: "dict | None" = None) -> dict:
+    """Return os.environ enriched with standard system paths and HOME.
+
+    Blender launched from a desktop session inherits the display-manager's
+    minimal environment. Subprocesses that inherit it (pip, venv, git, …)
+    can fail because tools they need are not on PATH. This function ensures
+    a complete, safe environment is passed to every subprocess we spawn.
+    """
+    env = os.environ.copy()
+
+    # Ensure standard bin dirs are present; append any that are missing so
+    # user-local paths (pyenv shims, ~/.local/bin) still take priority.
+    current_paths = [p for p in env.get("PATH", "").split(os.pathsep) if p]
+    for p in _SYSTEM_BIN_PATHS:
+        if p not in current_paths:
+            current_paths.append(p)
+    env["PATH"] = os.pathsep.join(current_paths)
+
+    # Guarantee HOME is set; pip and venv need it to locate config/cache dirs.
+    if not env.get("HOME"):
+        env["HOME"] = os.path.expanduser("~")
+
+    if extra:
+        env.update(extra)
+    return env
+
 MANAGED_VENV        = os.path.join(os.path.expanduser("~"), ".kimodo-venv")
 LLMVEC_DIR          = os.path.join(MANAGED_VENV, "llm2vec-model")
 LLMVEC_MODEL_ID     = "Aero-Ex/KIMODO-Meta3_llm2vec_NF4"
@@ -89,6 +133,7 @@ def has_nvidia_gpu() -> bool:
         r = subprocess.run(
             ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
             capture_output=True, timeout=5,
+            env=_build_env(),
         )
         return r.returncode == 0 and bool(r.stdout.strip())
     except Exception:
@@ -112,13 +157,23 @@ def is_installed() -> bool:
 def _find_system_python() -> str:
     """Return a system Python ≥ 3.10 that is not Blender's bundled Python."""
     blender_py = os.path.realpath(sys.executable)
+
+    # Build a deduplicated list of candidate paths to probe.
+    # shutil.which respects the current PATH, which may be stripped in a
+    # desktop session, so we also probe known install directories directly.
+    candidates: list[str] = []
     for name in ("python3.12", "python3.13", "python3.11", "python3.10", "python3", "python"):
-        found = shutil.which(name)
-        if not found:
-            continue
-        # Skip Windows App Execution Alias stubs — they live under
-        # %LOCALAPPDATA%\Microsoft\WindowsApps and open the Store instead of
-        # running a real interpreter, which breaks venv creation and pip.
+        # Honour PATH first (covers pyenv shims, conda envs, user installs).
+        via_which = shutil.which(name, path=_build_env()["PATH"])
+        if via_which and via_which not in candidates:
+            candidates.append(via_which)
+        # Then probe common install dirs that may not be on the desktop PATH.
+        for d in _EXTRA_PYTHON_DIRS:
+            full = os.path.join(d, name)
+            if os.path.isfile(full) and full not in candidates:
+                candidates.append(full)
+
+    for found in candidates:
         if os.name == "nt" and "windowsapps" in found.lower():
             continue
         if os.path.realpath(found) == blender_py:
@@ -142,6 +197,7 @@ def _git_available() -> bool:
     try:
         r = subprocess.run(
             ["git", "--version"], capture_output=True, timeout=5,
+            env=_build_env(),
         )
         return r.returncode == 0
     except Exception:
@@ -162,13 +218,15 @@ def _github_install_url(owner: str, repo: str) -> str:
 def _run(cmd: list, step: str, env: "dict | None" = None) -> None:
     """Run *cmd* as a subprocess, stream output to _log, raise on failure."""
     _log(f"▶ {step}")
+    # Always build a complete environment so pip/venv work correctly when
+    # Blender was launched from a desktop session with a stripped PATH.
     proc = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
-        env=env,
+        env=_build_env(env),
     )
     for line in proc.stdout:
         stripped = line.rstrip()
