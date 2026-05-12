@@ -49,9 +49,20 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
             # venv_exists() but not is_installed() → partial venv from a
             # previous session (no sentinel file); treat it the same way.
             box = layout.box()
-            box.label(text="Installation incomplete", icon='ERROR')
-            if so.install_status():
-                box.label(text=so.install_status(), icon='BLANK1')
+            if so.needs_python():
+                box.label(text="Python 3.10–3.12 required!", icon='ERROR')
+                box.separator(factor=0.3)
+                box.label(text="No compatible Python was found on your system.")
+                box.label(text="Install Python 3.10, 3.11, or 3.12 from python.org.")
+                box.label(text='Tick "Add Python to PATH" during install!')
+                box.separator(factor=0.3)
+                box.operator("kimodo.open_python_download",
+                             text="Download Python 3.12", icon='URL')
+                box.separator(factor=0.3)
+            else:
+                box.label(text="Installation incomplete", icon='ERROR')
+                if so.install_status():
+                    box.label(text=so.install_status(), icon='BLANK1')
             box.operator("kimodo.install_kimodo",
                          text="Retry Install", icon='FILE_REFRESH')
             box.operator("kimodo.reset_venv",

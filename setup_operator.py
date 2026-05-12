@@ -34,7 +34,8 @@ _WRAPPER_PLACEHOLDER = "path_to_your_Llama_text-encoders"
 # Install state  (module-level; panels poll this via a redraw timer)
 # ---------------------------------------------------------------------------
 
-_state: dict = {"running": False, "lines": [], "error": "", "done": False}
+_state: dict = {"running": False, "lines": [], "error": "", "done": False,
+                "needs_python": False}
 _lock = threading.Lock()
 
 
@@ -66,6 +67,11 @@ def is_installing() -> bool:
 def install_failed() -> bool:
     with _lock:
         return bool(_state["error"])
+
+
+def needs_python() -> bool:
+    with _lock:
+        return _state["needs_python"]
 
 
 def managed_python() -> str:
@@ -223,10 +229,12 @@ def _do_install() -> None:
         _log("Searching for system Python 3.10+…")
         sys_py = _find_system_python()
         if not sys_py:
+            with _lock:
+                _state["needs_python"] = True
             raise RuntimeError(
-                "No Python 3.10+ found on PATH. "
-                "Install Python 3.10–3.12 and make sure it is on your PATH, "
-                "then try again."
+                "No Python 3.10–3.12 found. "
+                "Install it from python.org (tick 'Add Python to PATH'), "
+                "then click Retry Install."
             )
         _log(f"Found: {sys_py}")
 
@@ -424,7 +432,7 @@ class KIMODO_OT_InstallKimodo(Operator):
             return {"CANCELLED"}
 
         with _lock:
-            _state.update(running=True, lines=[], error="", done=False)
+            _state.update(running=True, lines=[], error="", done=False, needs_python=False)
 
         threading.Thread(target=_do_install, daemon=True).start()
 
@@ -482,11 +490,27 @@ class KIMODO_OT_ResetVenv(Operator):
         return {"FINISHED"}
 
 
+class KIMODO_OT_OpenPythonDownload(Operator):
+    bl_idname      = "kimodo.open_python_download"
+    bl_label       = "Download Python 3.12"
+    bl_description = "Open python.org/downloads in your browser"
+
+    def execute(self, context):
+        import webbrowser
+        webbrowser.open("https://www.python.org/downloads/")
+        return {"FINISHED"}
+
+
 # ---------------------------------------------------------------------------
 # Registration
 # ---------------------------------------------------------------------------
 
-_classes = [KIMODO_OT_InstallKimodo, KIMODO_OT_UseInstalledKimodo, KIMODO_OT_ResetVenv]
+_classes = [
+    KIMODO_OT_InstallKimodo,
+    KIMODO_OT_UseInstalledKimodo,
+    KIMODO_OT_ResetVenv,
+    KIMODO_OT_OpenPythonDownload,
+]
 
 
 def register():
