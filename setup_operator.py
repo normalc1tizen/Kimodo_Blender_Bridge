@@ -100,7 +100,7 @@ def is_installed() -> bool:
 def _find_system_python() -> str:
     """Return a system Python ≥ 3.10 that is not Blender's bundled Python."""
     blender_py = os.path.realpath(sys.executable)
-    for name in ("python3.12", "python3.11", "python3.10", "python3", "python"):
+    for name in ("python3.12", "python3.13", "python3.11", "python3.10", "python3", "python"):
         found = shutil.which(name)
         if not found:
             continue
@@ -497,7 +497,7 @@ class KIMODO_OT_OpenPythonDownload(Operator):
 
     def execute(self, context):
         import webbrowser
-        webbrowser.open("https://www.python.org/downloads/")
+        webbrowser.open("https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe")
         return {"FINISHED"}
 
 

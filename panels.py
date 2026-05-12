@@ -53,11 +53,11 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
                 box.label(text="Python 3.10–3.12 required!", icon='ERROR')
                 box.separator(factor=0.3)
                 box.label(text="No compatible Python was found on your system.")
-                box.label(text="Install Python 3.10, 3.11, or 3.12 from python.org.")
-                box.label(text='Tick "Add Python to PATH" during install!')
+                box.label(text="Click below to download the Python 3.12 installer (Windows 64-bit).")
+                box.label(text='Run it and tick "Add Python to PATH", then click Retry Install.')
                 box.separator(factor=0.3)
                 box.operator("kimodo.open_python_download",
-                             text="Download Python 3.12", icon='URL')
+                             text="Download Python 3.12 Installer", icon='URL')
                 box.separator(factor=0.3)
             else:
                 box.label(text="Installation incomplete", icon='ERROR')
