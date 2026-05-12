@@ -83,6 +83,18 @@ def managed_python() -> str:
     return ""
 
 
+def has_nvidia_gpu() -> bool:
+    """Return True if an NVIDIA GPU is present (nvidia-smi responds)."""
+    try:
+        r = subprocess.run(
+            ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+            capture_output=True, timeout=5,
+        )
+        return r.returncode == 0 and bool(r.stdout.strip())
+    except Exception:
+        return False
+
+
 def venv_exists() -> bool:
     """True if the venv directory is present (even if install is incomplete)."""
     return os.path.isdir(MANAGED_VENV)

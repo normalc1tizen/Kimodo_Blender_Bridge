@@ -6,7 +6,6 @@ All bpy.ops.kimodo.* operators.
 import bpy
 import os
 import json
-import subprocess
 import threading
 import random
 import time
@@ -80,26 +79,6 @@ class KIMODO_OT_StartKimodo(Operator):
         if sc.is_running():
             self.report({'INFO'}, "Kimodo is already running.")
             return {'CANCELLED'}
-
-        # Quick CUDA sanity-check before spending 7 minutes loading the model.
-        python = s.python_executable or "python"
-        try:
-            r = subprocess.run(
-                [python, "-c",
-                 "import torch; print('ok' if torch.cuda.is_available() else 'no_cuda')"],
-                capture_output=True, text=True, timeout=15,
-            )
-            if r.stdout.strip() == "no_cuda":
-                s.connection_status = (
-                    "Failed: No NVIDIA GPU / CUDA not available. "
-                    "Kimodo requires an NVIDIA GPU with CUDA."
-                )
-                self.report({'ERROR'},
-                    "No CUDA-capable NVIDIA GPU detected. "
-                    "Kimodo requires an NVIDIA GPU — AMD and Intel GPUs are not supported.")
-                return {'CANCELLED'}
-        except Exception:
-            pass  # If the check itself fails, let the normal launch surface the error.
 
         _reset_start_state()
         _start_state["running"] = True

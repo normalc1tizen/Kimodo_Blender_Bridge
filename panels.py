@@ -71,10 +71,19 @@ class KIMODO_PT_Connection(KIMODO_PanelBase, Panel):
 
         elif not so.is_installed():
             box = layout.box()
-            box.label(text="Kimodo not installed", icon='INFO')
-            box.label(text=f"Installs to:  ~/.kimodo-venv/")
+            has_gpu = so.has_nvidia_gpu()
+            if not has_gpu:
+                box.label(text="NVIDIA GPU required!", icon='ERROR')
+                box.label(text="Kimodo only works with NVIDIA GPUs (CUDA).")
+                box.label(text="AMD and Intel GPUs are not supported.")
+                box.separator(factor=0.3)
+            else:
+                box.label(text="Kimodo not installed", icon='INFO')
+            box.label(text="Installs to:  ~/.kimodo-venv/")
             box.label(text="Requires:  Python 3.10+, ~8 GB disk, internet")
-            box.operator("kimodo.install_kimodo", icon='IMPORT')
+            row = box.row()
+            row.enabled = has_gpu
+            row.operator("kimodo.install_kimodo", icon='IMPORT')
             layout.separator(factor=0.5)
 
         elif not s.python_executable or not os.path.isfile(s.python_executable):
