@@ -496,8 +496,11 @@ class KIMODO_OT_OpenPythonDownload(Operator):
     bl_description = "Open python.org/downloads in your browser"
 
     def execute(self, context):
-        import webbrowser
-        webbrowser.open("https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe")
+        import platform, webbrowser
+        arch = "arm64" if platform.machine().lower() == "arm64" else "amd64"
+        webbrowser.open(
+            f"https://www.python.org/ftp/python/3.12.10/python-3.12.10-{arch}.exe"
+        )
         return {"FINISHED"}
 
 
