@@ -445,29 +445,31 @@ def build_constraints_json(
                         local_joints_rot.append([[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER))
 
                 elif ctype in ('left_hand', 'right_hand', 'left_foot', 'right_foot'):
-                    # Bone names match both somaskel77 (BVH) and SOMASkeleton30.
-                    _EFFECTOR_BONE = {
-                        'left_hand': 'LeftHand', 'right_hand': 'RightHand',
-                        'left_foot': 'LeftFoot', 'right_foot': 'RightFoot',
-                    }[ctype]
-                    # SOMASkeleton30 indices for these joints.
-                    _EFFECTOR_IDX = {
-                        'left_hand': 13, 'right_hand': 19,
-                        'left_foot': 24, 'right_foot': 28,
-                    }[ctype]
+                    # Kimodo derives the effector world position via FK:
+                    #   skeleton.fk(local_rot_mats, root_positions) → global joint positions
+                    # So root_positions must be the CHARACTER ROOT (hips), and
+                    # local_joints_rot must be the FULL pose — not just the effector joint.
+                    # The hand/foot world position is then the FK result for that joint.
                     if obj.type == 'ARMATURE':
+                        # Full pose available: read root + all joint rotations so FK
+                        # correctly places the effector at its world position.
                         _evaluate_frame(scene, ci.frame)
-                        pos3d_raw = get_bone_world_position(obj, _EFFECTOR_BONE) or blender_to_kimodo_pos(obj.location)
-                        rot_aa = get_bone_world_rotation(obj, _EFFECTOR_BONE)
+                        pos3d = get_root_position(obj)
+                        root_positions.append(apply_offset_3d(pos3d))
+                        pos2d = [pos3d[0], pos3d[2]]
+                        smooth_root_2d.append(apply_offset_2d(pos2d))
+                        jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
+                        local_joints_rot.append(jrot)
                     else:
-                        pos3d_raw = blender_to_kimodo_pos(obj.location)
-                        rot_aa = [0.0, 0.0, 0.0]
-
-                    pos3d = apply_offset_3d(pos3d_raw)
-                    root_positions.append(pos3d)
-                    jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
-                    jrot[_EFFECTOR_IDX] = rot_aa
-                    local_joints_rot.append(jrot)
+                        # Plain Empty: only the desired effector world position is known.
+                        # Without a full pose, FK cannot be solved exactly, so we place
+                        # the root at the marker's XZ at a typical standing hip height.
+                        # This is approximate — use an armature marker for precise control.
+                        _DEFAULT_HIP_HEIGHT_KIMODO = 0.95  # metres, Y-up
+                        pos3d_marker = blender_to_kimodo_pos(obj.location)
+                        pos3d = [pos3d_marker[0], _DEFAULT_HIP_HEIGHT_KIMODO, pos3d_marker[2]]
+                        root_positions.append(apply_offset_3d(pos3d))
+                        local_joints_rot.append([[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER))
 
             block: dict[str, Any] = {
                 "type": ctype.replace("_", "-"),  # left_hand → left-hand
