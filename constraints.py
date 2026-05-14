@@ -422,6 +422,90 @@ def build_constraints_json(
                 type_to_items[ct] = []
             type_to_items[ct].append(ci)
 
+        _EFFECTOR_SET = frozenset(['left_hand', 'right_hand', 'left_foot', 'right_foot'])
+
+        # ------------------------------------------------------------------
+        # Helper: compute (pos3d, smooth2d_or_None, jrot) for one effector
+        # constraint item.  Called for both single- and multi-effector cases.
+        # ------------------------------------------------------------------
+        def _effector_item_data(ci, ctype, obj):
+            _EFFECTOR_BONE = {
+                'left_hand': 'LeftHand', 'right_hand': 'RightHand',
+                'left_foot': 'LeftFoot', 'right_foot': 'RightFoot',
+            }[ctype]
+            _EFFECTOR_IDX = {
+                'left_hand': 13, 'right_hand': 19,
+                'left_foot': 24, 'right_foot': 28,
+            }[ctype]
+
+            is_armature = obj.type == 'ARMATURE'
+            if is_armature:
+                _evaluate_frame(scene, ci.frame)
+
+            if ci.effector_space == 'LOCAL' and obj.parent:
+                effector_blender_vec = obj.location.copy()
+            else:
+                effector_blender_vec = obj.matrix_world.translation.copy()
+
+            effector_pos3d = blender_to_kimodo_pos(effector_blender_vec)
+
+            if is_armature:
+                bone_world_pos = get_bone_world_position(obj, _EFFECTOR_BONE)
+                if bone_world_pos is not None:
+                    if ci.effector_space == 'LOCAL' and obj.parent:
+                        pb = obj.pose.bones.get(_EFFECTOR_BONE)
+                        if pb:
+                            local_vec = obj.parent.matrix_world.inverted() @ (
+                                obj.matrix_world @ pb.head)
+                            effector_pos3d = blender_to_kimodo_pos(local_vec)
+                    else:
+                        effector_pos3d = bone_world_pos
+                effector_rot_aa = get_bone_world_rotation(obj, _EFFECTOR_BONE)
+            else:
+                effector_rot_aa = [0.0, 0.0, 0.0]
+
+            # Root position
+            rps = ci.root_pos_source
+            if rps == 'MANUAL':
+                pos3d = apply_offset_3d(list(ci.manual_root_pos))
+            elif rps == 'EFFECTOR':
+                pos3d = apply_offset_3d(effector_pos3d)
+            elif rps == 'HIPS' and is_armature:
+                pos3d = apply_offset_3d(get_root_position(obj))
+            else:  # AUTO
+                if is_armature:
+                    pos3d = apply_offset_3d(get_root_position(obj))
+                else:
+                    base = _T_POSE_OFFSET.get(ctype, mathutils.Vector((0, 0, 0)))
+                    delta = mathutils.Vector(ci.tpose_offset_delta)
+                    offset = base + delta
+                    ep = mathutils.Vector(effector_pos3d)
+                    pos3d = apply_offset_3d([ep.x - offset.x, ep.y - offset.y, ep.z - offset.z])
+
+            # Smooth root 2D
+            s2d = ci.smooth_root_2d_mode
+            if s2d == 'FROM_ROOT':
+                smooth2d = apply_offset_2d([pos3d[0], pos3d[2]])
+            elif s2d == 'FROM_EFFECTOR':
+                ep2 = apply_offset_3d(effector_pos3d)
+                smooth2d = apply_offset_2d([ep2[0], ep2[2]])
+            elif s2d == 'AUTO' and is_armature:
+                smooth2d = apply_offset_2d([pos3d[0], pos3d[2]])
+            else:
+                smooth2d = None
+
+            # Joint rotations
+            jrm = ci.joint_rots_mode
+            if jrm == 'FULL_POSE' and is_armature:
+                jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
+            elif jrm == 'EFFECTOR_ONLY':
+                jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
+                jrot[_EFFECTOR_IDX] = effector_rot_aa
+            else:
+                jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
+
+            return pos3d, smooth2d, jrot, _EFFECTOR_IDX
+
         out_constraints = []
 
         for ctype in type_order:
@@ -464,106 +548,16 @@ def build_constraints_json(
                         smooth_root_2d.append(apply_offset_2d(pos2d))
                         local_joints_rot.append([[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER))
 
-                elif ctype in ('left_hand', 'right_hand', 'left_foot', 'right_foot'):
-                    # Kimodo derives the effector world position via FK:
-                    #   skeleton.fk(local_rot_mats, root_positions) → global joint positions
-                    # root_positions = character root (hips); local_joints_rot = full pose.
-                    # All fields here are controlled by the per-constraint debug properties.
+                elif ctype in _EFFECTOR_SET:
+                    # Effectors are handled after this loop to detect and merge
+                    # same-frame conflicts into a single end-effector block.
+                    pass
 
-                    _EFFECTOR_BONE = {
-                        'left_hand': 'LeftHand', 'right_hand': 'RightHand',
-                        'left_foot': 'LeftFoot', 'right_foot': 'RightFoot',
-                    }[ctype]
-                    _EFFECTOR_IDX = {
-                        'left_hand': 13, 'right_hand': 19,
-                        'left_foot': 24, 'right_foot': 28,
-                    }[ctype]
-
-                    is_armature = obj.type == 'ARMATURE'
-                    if is_armature:
-                        _evaluate_frame(scene, ci.frame)
-
-                    # --- Gizmo space: resolve the base vector for position reads ---
-                    # LOCAL: read obj.location in parent-relative space (useful when
-                    # the marker is parented to the character rig).
-                    # WORLD: use the object's world position (standard).
-                    if ci.effector_space == 'LOCAL' and obj.parent:
-                        effector_blender_vec = obj.location.copy()
-                    else:
-                        effector_blender_vec = obj.matrix_world.translation.copy()
-
-                    effector_pos3d = blender_to_kimodo_pos(effector_blender_vec)
-
-                    if is_armature:
-                        bone_world_pos = get_bone_world_position(obj, _EFFECTOR_BONE)
-                        if bone_world_pos is not None:
-                            if ci.effector_space == 'LOCAL' and obj.parent:
-                                pb = obj.pose.bones.get(_EFFECTOR_BONE)
-                                if pb:
-                                    local_vec = obj.parent.matrix_world.inverted() @ (
-                                        obj.matrix_world @ pb.head)
-                                    effector_pos3d = blender_to_kimodo_pos(local_vec)
-                            else:
-                                effector_pos3d = bone_world_pos
-                        effector_rot_aa = get_bone_world_rotation(obj, _EFFECTOR_BONE)
-                    else:
-                        effector_rot_aa = [0.0, 0.0, 0.0]
-
-                    # --- Root position (what Kimodo FK anchors the skeleton to) ---
-                    rps = ci.root_pos_source
-                    if rps == 'MANUAL':
-                        pos3d = apply_offset_3d(list(ci.manual_root_pos))
-                    elif rps == 'EFFECTOR':
-                        pos3d = apply_offset_3d(effector_pos3d)
-                    elif rps == 'HIPS' and is_armature:
-                        pos3d = apply_offset_3d(get_root_position(obj))
-                    else:  # AUTO
-                        if is_armature:
-                            pos3d = apply_offset_3d(get_root_position(obj))
-                        else:
-                            # Plain Empty: back-solve root from the desired effector
-                            # world position using the T-pose offset.
-                            #
-                            #   FK:  effector_world = T_pose_offset + root_positions
-                            # → root_positions = desired_effector - T_pose_offset
-                            #
-                            # With identity rotations this places the effector exactly
-                            # at the marker.  The user can fine-tune via tpose_offset_delta
-                            # in the Effector Debug panel.
-                            base = _T_POSE_OFFSET.get(ctype, mathutils.Vector((0, 0, 0)))
-                            delta = mathutils.Vector(ci.tpose_offset_delta)
-                            offset = base + delta
-                            ep = mathutils.Vector(effector_pos3d)
-                            root_raw = [ep.x - offset.x, ep.y - offset.y, ep.z - offset.z]
-                            pos3d = apply_offset_3d(root_raw)
-
-                    root_positions.append(pos3d)
-
-                    # --- Smooth root 2D ---
-                    s2d = ci.smooth_root_2d_mode
-                    if s2d == 'FROM_ROOT':
-                        smooth_root_2d.append(apply_offset_2d([pos3d[0], pos3d[2]]))
-                    elif s2d == 'FROM_EFFECTOR':
-                        ep = apply_offset_3d(effector_pos3d)
-                        smooth_root_2d.append(apply_offset_2d([ep[0], ep[2]]))
-                    elif s2d == 'AUTO' and is_armature:
-                        smooth_root_2d.append(apply_offset_2d([pos3d[0], pos3d[2]]))
-                    # EXCLUDE (or AUTO + Empty): don't append
-
-                    # --- Joint rotations ---
-                    jrm = ci.joint_rots_mode
-                    if jrm == 'FULL_POSE' and is_armature:
-                        jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
-                    elif jrm == 'EFFECTOR_ONLY':
-                        jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
-                        jrot[_EFFECTOR_IDX] = effector_rot_aa
-                    else:  # IDENTITY (or FULL_POSE without an armature)
-                        jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
-
-                    local_joints_rot.append(jrot)
+            if ctype in _EFFECTOR_SET:
+                continue  # processed in the effector pass below
 
             block: dict[str, Any] = {
-                "type": ctype.replace("_", "-"),  # left_hand → left-hand
+                "type": ctype.replace("_", "-"),
                 "frame_indices": frame_indices,
             }
 
@@ -576,6 +570,99 @@ def build_constraints_json(
             if global_root_heading and len(global_root_heading) == len(frame_indices):
                 block["global_root_heading"] = global_root_heading
 
+            out_constraints.append(block)
+
+        # -----------------------------------------------------------------------
+        # Effector pass: group by kimodo frame to detect same-frame conflicts.
+        #
+        # If two or more different effectors (e.g. left-hand + right-hand) land
+        # on the same frame each would emit its own root_positions — contradicting
+        # each other about where the hips should be.  The fix is to merge them
+        # into one "end-effector" block with a single averaged root_positions and
+        # combined joint_names, as the Kimodo docs describe.
+        # -----------------------------------------------------------------------
+
+        # Collect (kimodo_frame, ctype, ci) for every enabled effector item.
+        effector_entries: list[tuple[int, str, Any]] = []
+        for ctype in [ct for ct in type_order if ct in _EFFECTOR_SET]:
+            for ci in type_to_items[ctype]:
+                kf = blender_frame_to_kimodo(ci.frame, scene_start, blender_fps, kimodo_fps)
+                effector_entries.append((kf, ctype, ci))
+
+        # Group by kimodo frame.
+        by_frame: dict[int, list] = {}
+        for kf, ctype, ci in effector_entries:
+            by_frame.setdefault(kf, []).append((ctype, ci))
+
+        # Partition into single-effector frames (use named type) and
+        # multi-effector frames (merge into end-effector).
+        single_by_ctype: dict[str, list] = {}   # ctype → [(kframe, ci)]
+        merged_frames: dict[int, list] = {}     # kframe → [(ctype, ci)]
+
+        for kf, pairs in by_frame.items():
+            if len(pairs) == 1:
+                ctype, ci = pairs[0]
+                single_by_ctype.setdefault(ctype, []).append((kf, ci))
+            else:
+                merged_frames[kf] = pairs
+
+        # --- Named-type blocks for single-effector frames ---
+        for ctype in [ct for ct in type_order if ct in _EFFECTOR_SET]:
+            entries = single_by_ctype.get(ctype, [])
+            if not entries:
+                continue
+            entries.sort(key=lambda x: x[0])
+            f_idx, r_pos, s2d_out, j_rot = [], [], [], []
+            for kf, ci in entries:
+                obj = ci.marker_object
+                pos3d, smooth2d, jrot, _ = _effector_item_data(ci, ctype, obj)
+                f_idx.append(kf)
+                r_pos.append(pos3d)
+                j_rot.append(jrot)
+                if smooth2d is not None:
+                    s2d_out.append(smooth2d)
+            block: dict[str, Any] = {
+                "type": ctype.replace("_", "-"),
+                "frame_indices": f_idx,
+                "root_positions": r_pos,
+                "local_joints_rot": j_rot,
+            }
+            if s2d_out:
+                block["smooth_root_2d"] = s2d_out
+            out_constraints.append(block)
+
+        # --- Merged end-effector blocks for multi-effector frames ---
+        for kf in sorted(merged_frames.keys()):
+            pairs = merged_frames[kf]
+            roots, jrots, smooth2ds, joint_names = [], [], [], []
+
+            merged_jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
+            for ctype, ci in pairs:
+                obj = ci.marker_object
+                pos3d, smooth2d, jrot, eff_idx = _effector_item_data(ci, ctype, obj)
+                roots.append(pos3d)
+                jrots.append(jrot)
+                joint_names.append(ctype)        # e.g. "left_hand"
+                merged_jrot[eff_idx] = jrot[eff_idx]
+                if smooth2d is not None:
+                    smooth2ds.append(smooth2d)
+
+            # Average root positions: each back-solve placed one effector
+            # correctly; the average gives a balanced hip position from which
+            # Kimodo's model can reach all targets.
+            n = len(roots)
+            avg_root = [sum(r[i] for r in roots) / n for i in range(3)]
+
+            block = {
+                "type": "end-effector",
+                "joint_names": joint_names,
+                "frame_indices": [kf],
+                "root_positions": [avg_root],
+                "local_joints_rot": [merged_jrot],
+            }
+            if smooth2ds:
+                avg_s2d = [sum(s[i] for s in smooth2ds) / len(smooth2ds) for i in range(2)]
+                block["smooth_root_2d"] = [avg_s2d]
             out_constraints.append(block)
 
         return out_constraints
