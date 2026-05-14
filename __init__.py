@@ -16,18 +16,12 @@ Requirements:
   • Kimodo demo running locally (or remotely with port forwarding)
     See: https://github.com/nv-tlabs/kimodo
 
-Usage:
-  1. Start Kimodo:  kimodo demo
-  2. Open Blender → N-Panel → Kimodo tab
-  3. Set URL (default: http://127.0.0.1:7860) → Test Connection
-  4. Enter a text prompt → Generate Motion
-  5. Retarget to your existing rig if needed
 """
 
 bl_info = {
-    "name":        "Kimodo Motion Generator",
-    "author":      "Kimodo Blender Bridge",
-    "version":     (1, 3, 1),
+    "name":        "Kimodo Blender Bridge",
+    "author":      "Lewdineer",
+    "version":     (1, 3, 2),
     "blender":     (4, 0, 0),
     "location":    "View3D › Sidebar (N-Panel) › Kimodo",
     "description": "Generate human motion with NVIDIA Kimodo AI. "
