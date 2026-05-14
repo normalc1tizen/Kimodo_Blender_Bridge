@@ -590,13 +590,12 @@ def build_constraints_json(
                 entries.append((kf, ci))
             entries.sort(key=lambda x: x[0])
 
-            f_idx, r_pos, s2d_out, j_rot = [], [], [], []
+            f_idx, r_pos, s2d_out = [], [], []
             for kf, ci in entries:
                 obj = ci.marker_object
-                pos3d, smooth2d, jrot, _ = _effector_item_data(ci, ctype, obj)
+                pos3d, smooth2d, _jrot, _ = _effector_item_data(ci, ctype, obj)
                 f_idx.append(kf)
                 r_pos.append(pos3d)
-                j_rot.append(jrot)
                 if smooth2d is not None:
                     s2d_out.append(smooth2d)
 
@@ -604,7 +603,6 @@ def build_constraints_json(
                 "type": ctype.replace("_", "-"),
                 "frame_indices": f_idx,
                 "root_positions": r_pos,
-                "local_joints_rot": j_rot,
             }
             if s2d_out:
                 block["smooth_root_2d"] = s2d_out
