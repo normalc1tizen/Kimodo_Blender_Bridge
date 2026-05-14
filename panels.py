@@ -550,7 +550,21 @@ class KIMODO_PT_EffectorDebug(KIMODO_PanelBase, Panel):
 
             is_empty_marker = ci.marker_object and ci.marker_object.type != 'ARMATURE'
             if ci.root_pos_source == 'AUTO' and is_empty_marker:
-                col.prop(ci, "hip_height")
+                # Show the hardcoded base offset so the user knows what it is,
+                # then let them fine-tune via the delta field.
+                _BASE = {
+                    'left_hand':  "(−0.56, +0.30, 0)",
+                    'right_hand': "(+0.56, +0.30, 0)",
+                    'left_foot':  "(−0.10, −0.90, 0)",
+                    'right_foot': "(+0.10, −0.90, 0)",
+                }
+                info = col.box()
+                info.label(
+                    text=f"root = marker − T-pose offset  {_BASE.get(ci.constraint_type, '')}",
+                    icon='INFO',
+                )
+                info.label(text="Adjust delta below if character is off:")
+                info.prop(ci, "tpose_offset_delta", text="Δ offset (Kimodo Y-up)")
 
             if ci.root_pos_source == 'EFFECTOR':
                 warn = col.box()

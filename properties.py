@@ -245,6 +245,20 @@ class KIMODO_ConstraintItem(PropertyGroup):
         ],
         default='FULL_POSE',
     )
+    tpose_offset_delta: FloatVectorProperty(
+        name="T-Pose Offset Δ",
+        description=(
+            "Fine-tune the T-pose offset used to back-solve root_positions "
+            "for plain Empty markers (Kimodo Y-up space: X right, Y up, Z fwd). "
+            "Added on top of the built-in estimate:\n"
+            "  left/right hand  →  (±0.56, 0.30, 0)\n"
+            "  left/right foot  →  (±0.10, −0.90, 0)"
+        ),
+        size=3,
+        default=(0.0, 0.0, 0.0),
+        subtype='XYZ',
+        unit='LENGTH',
+    )
 
 
 # ---------------------------------------------------------------------------

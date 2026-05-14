@@ -43,6 +43,26 @@ from typing import Any
 # Constants
 # ---------------------------------------------------------------------------
 
+# Approximate T-pose offsets of each end-effector joint relative to the
+# root (Hips) in Kimodo Y-up space (X right, Y up, Z forward), in metres.
+#
+# FK formula (from kimodo/skeleton/kinematics.py):
+#   posed_joints[j] = neutral_joints_centred[j] + root_positions
+#
+# With identity (T-pose) rotations, neutral_joints_centred[j] = T-pose offset.
+# So to place effector j at world position P:
+#   root_positions = P - T_POSE_OFFSET[j]
+#   → FK gives:  P - T_POSE_OFFSET[j] + T_POSE_OFFSET[j] = P  ✓
+#
+# Values are estimates for the default SOMA 1.75 m character; adjust the
+# per-constraint tpose_offset_delta in the Effector Debug panel if needed.
+_T_POSE_OFFSET = {
+    'left_hand':  mathutils.Vector((-0.56,  0.30, 0.0)),
+    'right_hand': mathutils.Vector(( 0.56,  0.30, 0.0)),
+    'left_foot':  mathutils.Vector((-0.10, -0.90, 0.0)),
+    'right_foot': mathutils.Vector(( 0.10, -0.90, 0.0)),
+}
+
 # Bone names for SOMASkeleton30, exactly matching Kimodo's bone_order_names_with_parents.
 # The INDEX in this list is the slot index that Kimodo reads from local_joints_rot.
 # All names exist in somaskel77 (the BVH skeleton) so pose_bones.get() will find them.
@@ -501,10 +521,21 @@ def build_constraints_json(
                         if is_armature:
                             pos3d = apply_offset_3d(get_root_position(obj))
                         else:
-                            # Plain Empty: no full pose available, estimate hip position
-                            # at marker XZ with the configured hip height.
-                            m = effector_pos3d
-                            pos3d = apply_offset_3d([m[0], ci.hip_height, m[2]])
+                            # Plain Empty: back-solve root from the desired effector
+                            # world position using the T-pose offset.
+                            #
+                            #   FK:  effector_world = T_pose_offset + root_positions
+                            # → root_positions = desired_effector - T_pose_offset
+                            #
+                            # With identity rotations this places the effector exactly
+                            # at the marker.  The user can fine-tune via tpose_offset_delta
+                            # in the Effector Debug panel.
+                            base = _T_POSE_OFFSET.get(ctype, mathutils.Vector((0, 0, 0)))
+                            delta = mathutils.Vector(ci.tpose_offset_delta)
+                            offset = base + delta
+                            ep = mathutils.Vector(effector_pos3d)
+                            root_raw = [ep.x - offset.x, ep.y - offset.y, ep.z - offset.z]
+                            pos3d = apply_offset_3d(root_raw)
 
                     root_positions.append(pos3d)
 
