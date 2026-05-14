@@ -465,7 +465,6 @@ def build_constraints_json(
 
                     pos3d = apply_offset_3d(pos3d_raw)
                     root_positions.append(pos3d)
-                    smooth_root_2d.append([pos3d[0], pos3d[2]])
                     jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
                     jrot[_EFFECTOR_IDX] = rot_aa
                     local_joints_rot.append(jrot)
