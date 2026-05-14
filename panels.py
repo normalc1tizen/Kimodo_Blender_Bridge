@@ -544,9 +544,25 @@ class KIMODO_PT_Retarget(KIMODO_PanelBase, Panel):
 
         layout.separator()
 
-        # Presets
+        # Built-in rig presets
+        from . import retarget as rt
+        builtin_box = layout.box()
+        builtin_box.label(text="Built-in Rig Presets", icon='COMMUNITY')
+        builtin_box.label(text="Load a mapping template, then adjust bone names to match your rig:", icon='INFO')
+        grid = builtin_box.grid_flow(row_major=True, columns=2, even_columns=True, align=True)
+        for preset_id, preset in rt.BUILTIN_RIG_PRESETS.items():
+            op = grid.operator(
+                "kimodo.load_builtin_preset",
+                text=preset["label"],
+                icon='ARMATURE_DATA',
+            )
+            op.preset_id = preset_id
+
+        layout.separator()
+
+        # User presets
         box = layout.box()
-        box.label(text="Bone Map Presets", icon='PRESET')
+        box.label(text="My Presets", icon='PRESET')
         row = box.row(align=True)
         row.prop(s, "preset_name", text="")
         row.operator("kimodo.save_preset", text="", icon='FILE_TICK')
@@ -555,7 +571,6 @@ class KIMODO_PT_Retarget(KIMODO_PanelBase, Panel):
         # List saved presets
         try:
             prefs = context.preferences.addons[__package__].preferences
-            from . import retarget as rt
             preset_names = rt.list_presets(prefs)
         except Exception:
             preset_names = []

@@ -587,6 +587,33 @@ class KIMODO_OT_DeletePreset(Operator):
         return {'FINISHED'}
 
 
+class KIMODO_OT_LoadBuiltinPreset(Operator):
+    """Load a built-in bone mapping preset for a common rig type"""
+    bl_idname = "kimodo.load_builtin_preset"
+    bl_label = "Load Built-in Preset"
+
+    preset_id: StringProperty()
+
+    def execute(self, context):
+        from . import retarget as rt_mod
+        preset = rt_mod.BUILTIN_RIG_PRESETS.get(self.preset_id)
+        if preset is None:
+            self.report({'ERROR'}, f"Unknown built-in preset '{self.preset_id}'")
+            return {'CANCELLED'}
+
+        s = context.scene.kimodo
+        s.bone_mappings.clear()
+        for p in preset["pairs"]:
+            item = s.bone_mappings.add()
+            item.source_bone   = p.get("src", "")
+            item.target_bone   = p.get("tgt", "")
+            item.enabled       = p.get("en", True)
+            item.retarget_mode = p.get("mode", "COPY_ROTATION")
+
+        self.report({'INFO'}, f"Loaded built-in preset '{preset['label']}' ({len(preset['pairs'])} bone pairs)")
+        return {'FINISHED'}
+
+
 class KIMODO_OT_ExportPresetFile(Operator):
     """Export the current bone mapping to a JSON file"""
     bl_idname  = "kimodo.export_preset_file"
@@ -1506,6 +1533,7 @@ _classes = [
     KIMODO_OT_SavePreset,
     KIMODO_OT_LoadPreset,
     KIMODO_OT_DeletePreset,
+    KIMODO_OT_LoadBuiltinPreset,
     KIMODO_OT_ExportPresetFile,
     KIMODO_OT_ImportPresetFile,
     # Segment operators
