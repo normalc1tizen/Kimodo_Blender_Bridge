@@ -1270,28 +1270,12 @@ class KIMODO_OT_AddConstraint(Operator):
         if active and active.type == 'ARMATURE':
             self.report({'INFO'},
                 f"Using selected armature '{active.name}' as full-body pose reference. "
-                "Pose it at frame {cur_frame} to define the keyframe.")
+                f"Pose it at frame {cur_frame} to define the keyframe.")
             return active
 
         # Case 2: source_armature exists → duplicate it for posing
         if s.source_armature:
-            bpy.ops.object.select_all(action='DESELECT')
-            s.source_armature.select_set(True)
-            context.view_layer.objects.active = s.source_armature
-            bpy.ops.object.duplicate(linked=False)
-            dup = context.active_object
-            name = f"Kimodo_PoseRef_{cur_frame:04d}"
-            dup.name = name
-            dup.data.name = name + "_data"
-            # Visually distinguish it — hide from render, show with orange tint
-            dup.color = (0.9, 0.5, 0.1, 0.7)
-            dup["kimodo_constraint"] = True
-            dup["kimodo_type"] = 'fullbody'
-            dup.show_name = True
-            self.report({'INFO'},
-                f"Duplicated source armature as '{name}'. "
-                f"Go to frame {cur_frame}, pose this armature, then generate.")
-            return dup
+            return self._duplicate_source_for_posing(context, s, cur_frame)
 
         # Case 3: nothing to work with
         self.report({'ERROR'},
@@ -1299,6 +1283,85 @@ class KIMODO_OT_AddConstraint(Operator):
             "Either: (a) select an armature first, or "
             "(b) generate a motion first so a source armature exists to duplicate.")
         return None
+
+    def _duplicate_source_for_posing(self, context, s, cur_frame):
+        """Duplicate source_armature and freeze its pose at cur_frame.
+
+        Plain duplication inherits the source's BVH F-curves, so any bone the
+        user rotates without explicitly keyframing gets reverted to the
+        animated value the next time the depsgraph evaluates the frame —
+        including during build_constraints_json, which silently undoes the
+        user's posing.
+
+        Fix: evaluate the source at cur_frame, copy that pose into the
+        duplicate, then strip the duplicate's animation_data so its bone
+        properties stick until the user changes them.
+        """
+        scene = context.scene
+        saved_frame = scene.frame_current
+        scene.frame_set(cur_frame)
+        context.view_layer.update()
+
+        bpy.ops.object.select_all(action='DESELECT')
+        s.source_armature.select_set(True)
+        context.view_layer.objects.active = s.source_armature
+        bpy.ops.object.duplicate(linked=False)
+        dup = context.active_object
+
+        # Make sure the duplicate's pose reflects the source's frame-N state
+        # before we strip animation data.
+        context.view_layer.update()
+
+        # Snapshot every pose bone's transform so we can re-apply after the
+        # animation_data wipe (clearing the action can otherwise reset values).
+        pose_snapshot = {}
+        for pb in dup.pose.bones:
+            pose_snapshot[pb.name] = (
+                pb.rotation_mode,
+                pb.location.copy(),
+                pb.rotation_quaternion.copy(),
+                pb.rotation_euler.copy(),
+                tuple(pb.rotation_axis_angle),
+                pb.scale.copy(),
+            )
+
+        # Strip both the object-level action (root motion / object xform) and
+        # any data-level action (rare for BVH but possible). After this, the
+        # bone properties are no longer overwritten on frame change.
+        if dup.animation_data:
+            dup.animation_data_clear()
+        if dup.data.animation_data:
+            dup.data.animation_data_clear()
+
+        # Re-apply the snapshot to lock the pose in place.
+        for pb in dup.pose.bones:
+            snap = pose_snapshot.get(pb.name)
+            if snap is None:
+                continue
+            mode, loc, qrot, erot, aarot, sc = snap
+            pb.rotation_mode = mode
+            pb.location = loc
+            pb.rotation_quaternion = qrot
+            pb.rotation_euler = erot
+            pb.rotation_axis_angle = aarot
+            pb.scale = sc
+
+        name = _unique_name(f"Kimodo_PoseRef_{cur_frame:04d}")
+        dup.name = name
+        dup.data.name = name + "_data"
+        # Visually distinguish — semi-transparent orange tint.
+        dup.color = (0.9, 0.5, 0.1, 0.7)
+        dup["kimodo_constraint"] = True
+        dup["kimodo_type"] = 'fullbody'
+        dup.show_name = True
+
+        scene.frame_set(saved_frame)
+        context.view_layer.update()
+
+        self.report({'INFO'},
+            f"Duplicated source armature as '{name}', frozen at frame {cur_frame}. "
+            f"Enter Pose Mode and tweak — changes will stick (no F-curves to fight).")
+        return dup
 
     def _create_empty(self, context, ctype, cur_frame):
         """Create a colour-coded Empty for non-fullbody constraint types."""
