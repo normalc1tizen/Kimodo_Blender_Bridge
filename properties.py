@@ -155,6 +155,97 @@ class KIMODO_ConstraintItem(PropertyGroup):
         default="",
     )
 
+    # ------------------------------------------------------------------
+    # End-effector debug overrides (hand / foot constraints only)
+    # ------------------------------------------------------------------
+
+    effector_space: EnumProperty(
+        name="Gizmo Space",
+        description=(
+            "Whether effector position is read in world space or in the marker "
+            "object's local (parent-relative) space"
+        ),
+        items=[
+            ('WORLD', "World", "Positions in absolute world space (standard)"),
+            ('LOCAL', "Local",
+             "Positions relative to the marker object's parent — useful when "
+             "the marker is parented to the character rig"),
+        ],
+        default='WORLD',
+    )
+    root_pos_source: EnumProperty(
+        name="Root Position",
+        description=(
+            "What to send as root_positions — Kimodo runs FK from here to "
+            "compute all joint world positions"
+        ),
+        items=[
+            ('AUTO',     "Auto",
+             "Armature: read Hips bone.  Empty: estimate at Hip Height below"),
+            ('HIPS',     "Hips Bone",
+             "Always read the Hips bone world position from an armature marker"),
+            ('EFFECTOR', "Effector Bone",
+             "Use the effector (hand/foot) bone world position as root — "
+             "reproduces the old broken behaviour for comparison"),
+            ('MANUAL',   "Manual",
+             "Manually type the root position in Kimodo Y-up space"),
+        ],
+        default='AUTO',
+    )
+    manual_root_pos: FloatVectorProperty(
+        name="Manual Root (Kimodo)",
+        description=(
+            "Root position sent to Kimodo in Y-up space (X right, Y up, Z forward). "
+            "Active when Root Position = Manual"
+        ),
+        size=3,
+        default=(0.0, 0.95, 0.0),
+        subtype='XYZ',
+        unit='LENGTH',
+    )
+    hip_height: FloatProperty(
+        name="Hip Height (m)",
+        description=(
+            "Estimated hip Y in Kimodo Y-up space. Used for plain Empty markers "
+            "when Root Position = Auto"
+        ),
+        default=0.95,
+        min=0.1,
+        max=2.5,
+        step=1,
+        precision=3,
+        unit='LENGTH',
+    )
+    smooth_root_2d_mode: EnumProperty(
+        name="Smooth Root 2D",
+        description="What to include in the smooth_root_2d field sent to Kimodo",
+        items=[
+            ('AUTO',          "Auto",
+             "Armature: include XZ of root_positions.  Empty: exclude"),
+            ('FROM_ROOT',     "From Root",
+             "Always include the XZ of root_positions"),
+            ('FROM_EFFECTOR', "From Effector",
+             "Include the XZ of the effector bone / marker world position"),
+            ('EXCLUDE',       "Exclude",
+             "Never send smooth_root_2d for this constraint"),
+        ],
+        default='AUTO',
+    )
+    joint_rots_mode: EnumProperty(
+        name="Joint Rotations",
+        description="What to put in local_joints_rot",
+        items=[
+            ('FULL_POSE',     "Full Pose",
+             "All joint rotations from the armature pose — FK then gives "
+             "the correct effector world position"),
+            ('EFFECTOR_ONLY', "Effector Only",
+             "Only the effector joint rotation; all others zero"),
+            ('IDENTITY',      "Identity (T-pose)",
+             "All zeros — T-pose for every joint"),
+        ],
+        default='FULL_POSE',
+    )
+
 
 # ---------------------------------------------------------------------------
 # Bone mapping item (one row in the UIList)

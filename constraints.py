@@ -447,29 +447,89 @@ def build_constraints_json(
                 elif ctype in ('left_hand', 'right_hand', 'left_foot', 'right_foot'):
                     # Kimodo derives the effector world position via FK:
                     #   skeleton.fk(local_rot_mats, root_positions) → global joint positions
-                    # So root_positions must be the CHARACTER ROOT (hips), and
-                    # local_joints_rot must be the FULL pose — not just the effector joint.
-                    # The hand/foot world position is then the FK result for that joint.
-                    if obj.type == 'ARMATURE':
-                        # Full pose available: read root + all joint rotations so FK
-                        # correctly places the effector at its world position.
+                    # root_positions = character root (hips); local_joints_rot = full pose.
+                    # All fields here are controlled by the per-constraint debug properties.
+
+                    _EFFECTOR_BONE = {
+                        'left_hand': 'LeftHand', 'right_hand': 'RightHand',
+                        'left_foot': 'LeftFoot', 'right_foot': 'RightFoot',
+                    }[ctype]
+                    _EFFECTOR_IDX = {
+                        'left_hand': 13, 'right_hand': 19,
+                        'left_foot': 24, 'right_foot': 28,
+                    }[ctype]
+
+                    is_armature = obj.type == 'ARMATURE'
+                    if is_armature:
                         _evaluate_frame(scene, ci.frame)
-                        pos3d = get_root_position(obj)
-                        root_positions.append(apply_offset_3d(pos3d))
-                        pos2d = [pos3d[0], pos3d[2]]
-                        smooth_root_2d.append(apply_offset_2d(pos2d))
-                        jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
-                        local_joints_rot.append(jrot)
+
+                    # --- Gizmo space: resolve the base vector for position reads ---
+                    # LOCAL: read obj.location in parent-relative space (useful when
+                    # the marker is parented to the character rig).
+                    # WORLD: use the object's world position (standard).
+                    if ci.effector_space == 'LOCAL' and obj.parent:
+                        effector_blender_vec = obj.location.copy()
                     else:
-                        # Plain Empty: only the desired effector world position is known.
-                        # Without a full pose, FK cannot be solved exactly, so we place
-                        # the root at the marker's XZ at a typical standing hip height.
-                        # This is approximate — use an armature marker for precise control.
-                        _DEFAULT_HIP_HEIGHT_KIMODO = 0.95  # metres, Y-up
-                        pos3d_marker = blender_to_kimodo_pos(obj.location)
-                        pos3d = [pos3d_marker[0], _DEFAULT_HIP_HEIGHT_KIMODO, pos3d_marker[2]]
-                        root_positions.append(apply_offset_3d(pos3d))
-                        local_joints_rot.append([[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER))
+                        effector_blender_vec = obj.matrix_world.translation.copy()
+
+                    effector_pos3d = blender_to_kimodo_pos(effector_blender_vec)
+
+                    if is_armature:
+                        bone_world_pos = get_bone_world_position(obj, _EFFECTOR_BONE)
+                        if bone_world_pos is not None:
+                            if ci.effector_space == 'LOCAL' and obj.parent:
+                                pb = obj.pose.bones.get(_EFFECTOR_BONE)
+                                if pb:
+                                    local_vec = obj.parent.matrix_world.inverted() @ (
+                                        obj.matrix_world @ pb.head)
+                                    effector_pos3d = blender_to_kimodo_pos(local_vec)
+                            else:
+                                effector_pos3d = bone_world_pos
+                        effector_rot_aa = get_bone_world_rotation(obj, _EFFECTOR_BONE)
+                    else:
+                        effector_rot_aa = [0.0, 0.0, 0.0]
+
+                    # --- Root position (what Kimodo FK anchors the skeleton to) ---
+                    rps = ci.root_pos_source
+                    if rps == 'MANUAL':
+                        pos3d = apply_offset_3d(list(ci.manual_root_pos))
+                    elif rps == 'EFFECTOR':
+                        pos3d = apply_offset_3d(effector_pos3d)
+                    elif rps == 'HIPS' and is_armature:
+                        pos3d = apply_offset_3d(get_root_position(obj))
+                    else:  # AUTO
+                        if is_armature:
+                            pos3d = apply_offset_3d(get_root_position(obj))
+                        else:
+                            # Plain Empty: no full pose available, estimate hip position
+                            # at marker XZ with the configured hip height.
+                            m = effector_pos3d
+                            pos3d = apply_offset_3d([m[0], ci.hip_height, m[2]])
+
+                    root_positions.append(pos3d)
+
+                    # --- Smooth root 2D ---
+                    s2d = ci.smooth_root_2d_mode
+                    if s2d == 'FROM_ROOT':
+                        smooth_root_2d.append(apply_offset_2d([pos3d[0], pos3d[2]]))
+                    elif s2d == 'FROM_EFFECTOR':
+                        ep = apply_offset_3d(effector_pos3d)
+                        smooth_root_2d.append(apply_offset_2d([ep[0], ep[2]]))
+                    elif s2d == 'AUTO' and is_armature:
+                        smooth_root_2d.append(apply_offset_2d([pos3d[0], pos3d[2]]))
+                    # EXCLUDE (or AUTO + Empty): don't append
+
+                    # --- Joint rotations ---
+                    jrm = ci.joint_rots_mode
+                    if jrm == 'FULL_POSE' and is_armature:
+                        jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
+                    elif jrm == 'EFFECTOR_ONLY':
+                        jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
+                        jrot[_EFFECTOR_IDX] = effector_rot_aa
+                    else:  # IDENTITY (or FULL_POSE without an armature)
+                        jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
+
+                    local_joints_rot.append(jrot)
 
             block: dict[str, Any] = {
                 "type": ctype.replace("_", "-"),  # left_hand → left-hand

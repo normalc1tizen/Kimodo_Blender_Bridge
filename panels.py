@@ -483,6 +483,110 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
 
 
 # ---------------------------------------------------------------------------
+# Panel 3b: Effector Debug
+# ---------------------------------------------------------------------------
+
+_EFFECTOR_TYPES = {'left_hand', 'right_hand', 'left_foot', 'right_foot'}
+
+_EFFECTOR_LABELS = {
+    'left_hand':  "L.Hand",
+    'right_hand': "R.Hand",
+    'left_foot':  "L.Foot",
+    'right_foot': "R.Foot",
+}
+
+
+class KIMODO_PT_EffectorDebug(KIMODO_PanelBase, Panel):
+    bl_label   = "🔧  Effector Debug"
+    bl_idname  = "KIMODO_PT_EffectorDebug"
+    bl_order   = 27
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        s = context.scene.kimodo
+
+        effectors = [ci for ci in s.motion_constraints
+                     if ci.constraint_type in _EFFECTOR_TYPES]
+
+        if not effectors:
+            col = layout.column()
+            col.label(text="No hand / foot constraints yet.", icon='INFO')
+            col.label(text="Add one in Motion Constraints above.")
+            return
+
+        layout.label(
+            text="Override how each effector is sent to Kimodo:",
+            icon='PREFERENCES',
+        )
+        layout.separator(factor=0.4)
+
+        for ci in effectors:
+            label = _EFFECTOR_LABELS.get(ci.constraint_type, ci.constraint_type)
+            box = layout.box()
+
+            # --- Header row ---
+            header = box.row(align=True)
+            header.label(
+                text=f"{label}  · F{ci.frame}"
+                     + (f"  [{ci.marker_object.name}]" if ci.marker_object else "  [no marker]"),
+                icon='CHECKBOX_HLT' if ci.enabled else 'CHECKBOX_DEHLT',
+            )
+
+            # --- Gizmo Space ---
+            row = box.row(align=True)
+            row.label(text="Gizmo Space:", icon='ORIENTATION_GLOBAL')
+            row.prop(ci, "effector_space", expand=True)
+
+            # --- Root Position ---
+            col = box.column(align=True)
+            col.label(text="Root Position  (hips fed into Kimodo FK):", icon='BONE_DATA')
+            col.prop(ci, "root_pos_source", text="")
+
+            if ci.root_pos_source == 'MANUAL':
+                sub = col.column(align=True)
+                sub.label(text="Kimodo Y-up space  [X right · Y up · Z fwd]:")
+                sub.prop(ci, "manual_root_pos", text="")
+
+            is_empty_marker = ci.marker_object and ci.marker_object.type != 'ARMATURE'
+            if ci.root_pos_source == 'AUTO' and is_empty_marker:
+                col.prop(ci, "hip_height")
+
+            if ci.root_pos_source == 'EFFECTOR':
+                warn = col.box()
+                warn.alert = True
+                warn.label(
+                    text="Sends hand/foot pos as hips — reproduces old bug.",
+                    icon='ERROR',
+                )
+
+            # --- Smooth Root 2D ---
+            col2 = box.column(align=True)
+            col2.label(text="smooth_root_2d:", icon='TRACKING')
+            col2.prop(ci, "smooth_root_2d_mode", text="")
+
+            # --- Joint Rotations ---
+            col3 = box.column(align=True)
+            col3.label(text="local_joints_rot:", icon='ARMATURE_DATA')
+            col3.prop(ci, "joint_rots_mode", text="")
+
+            if ci.joint_rots_mode == 'FULL_POSE' and is_empty_marker:
+                warn2 = col3.box()
+                warn2.alert = True
+                warn2.label(
+                    text="Full Pose needs an armature marker.",
+                    icon='ERROR',
+                )
+
+        layout.separator()
+        layout.operator(
+            "kimodo.preview_constraints_json",
+            icon='TEXT',
+            text="Preview Full Constraint JSON",
+        )
+
+
+# ---------------------------------------------------------------------------
 # Panel 4: Retarget
 # ---------------------------------------------------------------------------
 
@@ -618,6 +722,7 @@ _classes = [
     KIMODO_PT_Segments,
     KIMODO_PT_Generate,
     KIMODO_PT_Constraints,
+    KIMODO_PT_EffectorDebug,
     KIMODO_PT_Retarget,
     KIMODO_PT_Help,
 ]
