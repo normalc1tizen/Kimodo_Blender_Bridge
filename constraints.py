@@ -573,45 +573,21 @@ def build_constraints_json(
             out_constraints.append(block)
 
         # -----------------------------------------------------------------------
-        # Effector pass: group by kimodo frame to detect same-frame conflicts.
+        # Effector pass: one named-type block per effector type, all frames.
         #
-        # If two or more different effectors (e.g. left-hand + right-hand) land
-        # on the same frame each would emit its own root_positions — contradicting
-        # each other about where the hips should be.  The fix is to merge them
-        # into one "end-effector" block with a single averaged root_positions and
-        # combined joint_names, as the Kimodo docs describe.
+        # Each block is built independently so its FK back-solve is exact for
+        # its own effector (root = target - T_pose_offset → FK gives target).
+        # When two effectors share the same frame their root_positions will
+        # differ — Kimodo treats all constraints as soft guides and will find
+        # a natural pose that reaches both targets from a compromise root.
         # -----------------------------------------------------------------------
-
-        # Collect (kimodo_frame, ctype, ci) for every enabled effector item.
-        effector_entries: list[tuple[int, str, Any]] = []
         for ctype in [ct for ct in type_order if ct in _EFFECTOR_SET]:
+            entries = []
             for ci in type_to_items[ctype]:
                 kf = blender_frame_to_kimodo(ci.frame, scene_start, blender_fps, kimodo_fps)
-                effector_entries.append((kf, ctype, ci))
-
-        # Group by kimodo frame.
-        by_frame: dict[int, list] = {}
-        for kf, ctype, ci in effector_entries:
-            by_frame.setdefault(kf, []).append((ctype, ci))
-
-        # Partition into single-effector frames (use named type) and
-        # multi-effector frames (merge into end-effector).
-        single_by_ctype: dict[str, list] = {}   # ctype → [(kframe, ci)]
-        merged_frames: dict[int, list] = {}     # kframe → [(ctype, ci)]
-
-        for kf, pairs in by_frame.items():
-            if len(pairs) == 1:
-                ctype, ci = pairs[0]
-                single_by_ctype.setdefault(ctype, []).append((kf, ci))
-            else:
-                merged_frames[kf] = pairs
-
-        # --- Named-type blocks for single-effector frames ---
-        for ctype in [ct for ct in type_order if ct in _EFFECTOR_SET]:
-            entries = single_by_ctype.get(ctype, [])
-            if not entries:
-                continue
+                entries.append((kf, ci))
             entries.sort(key=lambda x: x[0])
+
             f_idx, r_pos, s2d_out, j_rot = [], [], [], []
             for kf, ci in entries:
                 obj = ci.marker_object
@@ -621,6 +597,7 @@ def build_constraints_json(
                 j_rot.append(jrot)
                 if smooth2d is not None:
                     s2d_out.append(smooth2d)
+
             block: dict[str, Any] = {
                 "type": ctype.replace("_", "-"),
                 "frame_indices": f_idx,
@@ -629,40 +606,6 @@ def build_constraints_json(
             }
             if s2d_out:
                 block["smooth_root_2d"] = s2d_out
-            out_constraints.append(block)
-
-        # --- Merged end-effector blocks for multi-effector frames ---
-        for kf in sorted(merged_frames.keys()):
-            pairs = merged_frames[kf]
-            roots, jrots, smooth2ds, joint_names = [], [], [], []
-
-            merged_jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
-            for ctype, ci in pairs:
-                obj = ci.marker_object
-                pos3d, smooth2d, jrot, eff_idx = _effector_item_data(ci, ctype, obj)
-                roots.append(pos3d)
-                jrots.append(jrot)
-                joint_names.append(ctype)        # e.g. "left_hand"
-                merged_jrot[eff_idx] = jrot[eff_idx]
-                if smooth2d is not None:
-                    smooth2ds.append(smooth2d)
-
-            # Average root positions: each back-solve placed one effector
-            # correctly; the average gives a balanced hip position from which
-            # Kimodo's model can reach all targets.
-            n = len(roots)
-            avg_root = [sum(r[i] for r in roots) / n for i in range(3)]
-
-            block = {
-                "type": "end-effector",
-                "joint_names": joint_names,
-                "frame_indices": [kf],
-                "root_positions": [avg_root],
-                "local_joints_rot": [merged_jrot],
-            }
-            if smooth2ds:
-                avg_s2d = [sum(s[i] for s in smooth2ds) / len(smooth2ds) for i in range(2)]
-                block["smooth_root_2d"] = [avg_s2d]
             out_constraints.append(block)
 
         return out_constraints
