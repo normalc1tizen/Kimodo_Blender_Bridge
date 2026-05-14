@@ -483,14 +483,16 @@ def build_constraints_json(
                     pos3d = apply_offset_3d([ep.x - offset.x, ep.y - offset.y, ep.z - offset.z])
 
             # Smooth root 2D
+            # pos3d is already offset-adjusted (apply_offset_3d was called above),
+            # so extract XZ directly — do NOT call apply_offset_2d again.
             s2d = ci.smooth_root_2d_mode
             if s2d == 'FROM_ROOT':
-                smooth2d = apply_offset_2d([pos3d[0], pos3d[2]])
+                smooth2d = [pos3d[0], pos3d[2]]
             elif s2d == 'FROM_EFFECTOR':
                 ep2 = apply_offset_3d(effector_pos3d)
-                smooth2d = apply_offset_2d([ep2[0], ep2[2]])
+                smooth2d = [ep2[0], ep2[2]]
             elif s2d == 'AUTO' and is_armature:
-                smooth2d = apply_offset_2d([pos3d[0], pos3d[2]])
+                smooth2d = [pos3d[0], pos3d[2]]
             else:
                 smooth2d = None
 
