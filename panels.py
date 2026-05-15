@@ -370,7 +370,7 @@ class KIMODO_PT_Constraints(KIMODO_PanelBase, Panel):
 
         add_types = [
             ('root2d',      "Root XZ",    'EMPTY_ARROWS'),
-            #('fullbody',    "Full-Body",  'ARMATURE_DATA'),
+            ('fullbody',    "Full-Body",  'ARMATURE_DATA'),
             ('left_hand',   "L.Hand",     'VIEW_PAN'),
             ('right_hand',  "R.Hand",     'VIEW_PAN'),
             ('left_foot',   "L.Foot",     'SNAP_FACE'),

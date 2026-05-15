@@ -119,6 +119,28 @@ SOMA_JOINT_PARENTS = [
 # M_BK = [[1,0,0],[0,0,1],[0,-1,0]] — orthogonal, det=1
 # For rotation matrices: R_kimodo = M_BK @ R_blender @ M_BK.T
 
+# Bone names for each end-effector type (somaskel77 / SOMASkeleton30).
+EFFECTOR_BONE = {
+    'left_hand':  'LeftHand',
+    'right_hand': 'RightHand',
+    'left_foot':  'LeftFoot',
+    'right_foot': 'RightFoot',
+}
+# Index of each end-effector in SOMA_JOINT_ORDER.
+EFFECTOR_IDX = {
+    'left_hand': 13, 'right_hand': 19, 'left_foot': 24, 'right_foot': 28,
+}
+# Fallback rest-pose offset from Hips to each effector in Kimodo Y-up meters
+# (used when no source_armature is available to read true offsets from).
+# Values approximate an adult SOMA T-pose: arms out sideways at shoulder height,
+# feet straight below the hips at ground level (hips ~0.9 m up).
+DEFAULT_TPOSE_OFFSETS = {
+    'left_hand':  ( 0.75,  0.45, 0.0),
+    'right_hand': (-0.75,  0.45, 0.0),
+    'left_foot':  ( 0.10, -0.90, 0.0),
+    'right_foot': (-0.10, -0.90, 0.0),
+}
+
 
 # ---------------------------------------------------------------------------
 # Coordinate conversion helpers
@@ -311,6 +333,28 @@ def get_bone_world_position(
     return blender_to_kimodo_pos(world_pos)
 
 
+def get_effector_tpose_offset(
+    scene: bpy.types.Scene,
+    effector_type: str,
+) -> tuple[float, float, float]:
+    """Rest-pose offset from Hips to the named end-effector, in Kimodo Y-up meters.
+
+    Reads bone rest positions from scene.kimodo.source_armature when present so
+    the offset matches the actual character proportions. Falls back to a
+    hard-coded adult SOMA T-pose when no source armature is set.
+    """
+    arm = getattr(getattr(scene, "kimodo", None), "source_armature", None)
+    if arm and arm.type == 'ARMATURE':
+        bones = arm.data.bones
+        hips = (bones.get("Hips") or bones.get("hips")
+                or bones.get("Hip") or bones.get("pelvis") or bones.get("Pelvis"))
+        eff = bones.get(EFFECTOR_BONE[effector_type])
+        if hips and eff:
+            d = eff.head_local - hips.head_local   # Blender Z-up local space
+            return (d.x, d.z, -d.y)                # → Kimodo Y-up
+    return DEFAULT_TPOSE_OFFSETS[effector_type]
+
+
 def get_bone_world_rotation(
     armature_obj: bpy.types.Object,
     bone_name: str,
@@ -445,29 +489,36 @@ def build_constraints_json(
                         local_joints_rot.append([[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER))
 
                 elif ctype in ('left_hand', 'right_hand', 'left_foot', 'right_foot'):
-                    # Bone names match both somaskel77 (BVH) and SOMASkeleton30.
-                    _EFFECTOR_BONE = {
-                        'left_hand': 'LeftHand', 'right_hand': 'RightHand',
-                        'left_foot': 'LeftFoot', 'right_foot': 'RightFoot',
-                    }[ctype]
-                    # SOMASkeleton30 indices for these joints.
-                    _EFFECTOR_IDX = {
-                        'left_hand': 13, 'right_hand': 19,
-                        'left_foot': 24, 'right_foot': 28,
-                    }[ctype]
-                    if obj.type == 'ARMATURE':
-                        _evaluate_frame(scene, ci.frame)
-                        pos3d_raw = get_bone_world_position(obj, _EFFECTOR_BONE) or blender_to_kimodo_pos(obj.location)
-                        rot_aa = get_bone_world_rotation(obj, _EFFECTOR_BONE)
-                    else:
-                        pos3d_raw = blender_to_kimodo_pos(obj.location)
-                        rot_aa = [0.0, 0.0, 0.0]
+                    # Kimodo derives the effector target from FK on (root_positions,
+                    # local_joints_rot) — root_positions is the HIPS, NOT the hand.
+                    eff_idx = EFFECTOR_IDX[ctype]
 
-                    pos3d = apply_offset_3d(pos3d_raw)
+                    if obj.type == 'ARMATURE':
+                        # Armature marker: read hips + full pose like fullbody.
+                        # FK of this pose naturally places the effector wherever
+                        # the user posed it.
+                        _evaluate_frame(scene, ci.frame)
+                        hips_pos = get_root_position(obj)
+                        jrot = get_armature_joint_rots(obj, SOMA_JOINT_ORDER)
+                    else:
+                        # Empty marker: its location is the *target* end-effector
+                        # position. Pick hips such that a T-pose places the
+                        # effector exactly there, and use a T-pose (all zero
+                        # rotations) for the body. The Empty's rotation is used
+                        # as the effector's orientation.
+                        target = blender_to_kimodo_pos(obj.location)
+                        ox, oy, oz = get_effector_tpose_offset(scene, ctype)
+                        hips_pos = [target[0] - ox, target[1] - oy, target[2] - oz]
+                        jrot = [[0.0, 0.0, 0.0] for _ in SOMA_JOINT_ORDER]
+                        # In T-pose all ancestors are identity, so the effector's
+                        # local rotation equals its world rotation.
+                        jrot[eff_idx] = quat_to_axis_angle_vec(
+                            obj.matrix_world.to_quaternion()
+                        )
+
+                    pos3d = apply_offset_3d(hips_pos)
                     root_positions.append(pos3d)
                     smooth_root_2d.append([pos3d[0], pos3d[2]])
-                    jrot = [[0.0, 0.0, 0.0]] * len(SOMA_JOINT_ORDER)
-                    jrot[_EFFECTOR_IDX] = rot_aa
                     local_joints_rot.append(jrot)
 
             block: dict[str, Any] = {
