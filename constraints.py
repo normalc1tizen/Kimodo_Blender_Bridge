@@ -213,93 +213,63 @@ def get_armature_joint_rots(
     armature_obj: bpy.types.Object,
     joint_order: list[str],
 ) -> list[list[float]]:
-    """Extract SOMASkeleton30 local joint rotations from a BVH-imported armature.
+    """Extract SOMASkeleton30 local joint rotations from a posed armature.
 
-    bvhio writes ZYX Euler channels (Zrotation, Yrotation, Xrotation) whose
-    angles are in Kimodo's Y-up coordinate space.  Blender remaps the ROOT
-    bone's channels into its own Z-up convention (because the armature object
-    rotation compensates for the Y-up→Z-up import), but child-bone Euler
-    values are stored as-is from the BVH.
+    SMPL/Kimodo defines per-joint local rotations via:
+        G[i] = G[parent[i]] @ R[i]
+    where G[i] is the bone's cumulative world rotation (relative to the
+    canonical T-pose where every G is identity) and R[i] is the local rotation
+    stored in ``local_joints_rot``.
 
-    Root bone (index 0):
-        Blender's to_quaternion() correctly describes the Z-up-remapped root
-        orientation; quat_to_axis_angle_vec then converts back to Kimodo Y-up.
+    The previous implementation read ``pb.rotation_euler`` directly and assumed
+    the resulting matrix was already R[i] in Kimodo's Y-up basis.  That holds
+    only when each Blender bone's rest orientation is identity — but Blender's
+    BVH importer builds bones whose rest matrices encode the head→tail
+    direction, so most bones have non-trivial rests (e.g. shoulders at ~−82°
+    around Z, hips flipped 156° around X).  Treating the bone-local Euler as a
+    Kimodo-frame rotation produced axis-swapped output on those bones.
 
-    Child bones (index 1-29):
-        The Euler angles are in Kimodo's Y-up space, so we build the rotation
-        matrix directly with standard right-hand math — Rz @ Ry @ Rx for ZYX
-        mode — and skip Blender's to_quaternion() entirely (which would wrongly
-        apply Blender's Z-up axis labels).  mathutils.Matrix.Rotation uses the
-        same formulas in any right-hand system, so no extra remapping is needed.
+    This implementation is rest-orientation-invariant:
+
+      1. For each bone, compute its pose-vs-rest delta in armature (Blender
+         Z-up) space:  delta = pose_arm @ rest_arm⁻¹.  This is the physical
+         rotation the bone underwent in world space and is independent of how
+         Blender chose to orient the bone at rest.
+      2. Conjugate the delta into Kimodo's Y-up basis (M_BK · delta · M_BK⁻¹)
+         to get G[i] in Kimodo world coordinates.
+      3. Recover the local rotation as R[i] = G[parent]⁻¹ @ G[i].
     """
     pose_bones = armature_obj.pose.bones
-    result: list[list[float]] = []
 
-    for i, name in enumerate(joint_order):
+    # Blender Z-up → Kimodo Y-up basis change (see module header).
+    # Vectors:  (x, y, z)_blender → (x, z, -y)_kimodo
+    M_BK = mathutils.Matrix(((1, 0, 0), (0, 0, 1), (0, -1, 0)))
+    M_KB = M_BK.transposed()
+
+    # G[i]: bone's pose-relative-to-rest rotation, in Kimodo Y-up basis.
+    G_kimodo: dict[str, mathutils.Matrix] = {}
+    for name in joint_order:
         pb = pose_bones.get(name)
         if pb is None:
-            result.append([0.0, 0.0, 0.0])
+            G_kimodo[name] = mathutils.Matrix.Identity(3)
             continue
+        rest_arm = pb.bone.matrix_local.to_3x3()
+        pose_arm = pb.matrix.to_3x3()
+        # rest is a pure rotation, so .transposed() == .inverted()
+        delta_arm = pose_arm @ rest_arm.transposed()
+        G_kimodo[name] = M_BK @ delta_arm @ M_KB
 
-        mode = pb.rotation_mode
-
-        if i == 0:
-            # Root: Blender has remapped these channels to Z-up, so go through
-            # Blender's quaternion and apply the standard [X,Z,-Y] axis remap.
-            if mode == 'QUATERNION':
-                q = pb.rotation_quaternion
-            elif mode == 'AXIS_ANGLE':
-                q = mathutils.Quaternion(
-                    mathutils.Vector(pb.rotation_axis_angle[1:4]),
-                    pb.rotation_axis_angle[0],
-                )
-            else:
-                q = pb.rotation_euler.to_quaternion()
-            result.append(quat_to_axis_angle_vec(q))
-
-        elif mode == 'QUATERNION':
-            # Child bone manually posed in quaternion mode — treat axis-angle
-            # as-is in Kimodo's local space (no coordinate remap).
-            q = pb.rotation_quaternion.normalized()
-            angle = 2.0 * math.acos(max(-1.0, min(1.0, q.w)))
-            s = math.sqrt(max(0.0, 1.0 - q.w * q.w))
-            result.append([0.0, 0.0, 0.0] if s < 1e-6
-                          else [q.x / s * angle, q.y / s * angle, q.z / s * angle])
-
-        elif mode == 'AXIS_ANGLE':
-            q = mathutils.Quaternion(
-                mathutils.Vector(pb.rotation_axis_angle[1:4]),
-                pb.rotation_axis_angle[0],
-            ).normalized()
-            angle = 2.0 * math.acos(max(-1.0, min(1.0, q.w)))
-            s = math.sqrt(max(0.0, 1.0 - q.w * q.w))
-            result.append([0.0, 0.0, 0.0] if s < 1e-6
-                          else [q.x / s * angle, q.y / s * angle, q.z / s * angle])
-
+    result: list[list[float]] = []
+    for i, name in enumerate(joint_order):
+        G_i = G_kimodo.get(name, mathutils.Matrix.Identity(3))
+        parent_idx = SOMA_JOINT_PARENTS[i] if i < len(SOMA_JOINT_PARENTS) else -1
+        if parent_idx < 0:
+            R_local = G_i
         else:
-            # Child bone with Euler mode (ZYX for BVH import).
-            # The angles are in Kimodo's Y-up convention.  Build the rotation
-            # matrix directly — no to_quaternion(), which would mis-apply
-            # Blender's Z-up axis labels to Kimodo's Y-up angle values.
-            x = pb.rotation_euler.x
-            y = pb.rotation_euler.y
-            z = pb.rotation_euler.z
-            Rx = mathutils.Matrix.Rotation(x, 3, 'X')
-            Ry = mathutils.Matrix.Rotation(y, 3, 'Y')
-            Rz = mathutils.Matrix.Rotation(z, 3, 'Z')
-            if mode == 'ZYX':
-                R = Rz @ Ry @ Rx
-            elif mode == 'ZXY':
-                R = Rz @ Rx @ Ry
-            elif mode == 'YZX':
-                R = Ry @ Rz @ Rx
-            elif mode == 'YXZ':
-                R = Ry @ Rx @ Rz
-            elif mode == 'XZY':
-                R = Rx @ Rz @ Ry
-            else:   # XYZ or unknown
-                R = Rx @ Ry @ Rz
-            result.append(_rot3_to_axis_angle(R))
+            parent_name = joint_order[parent_idx]
+            G_parent = G_kimodo.get(parent_name, mathutils.Matrix.Identity(3))
+            R_local = G_parent.transposed() @ G_i
+        result.append(_rot3_to_axis_angle(R_local))
 
     return result
 
