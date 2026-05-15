@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.3] — 2026-05-15
+
+### Fixed
+
+- **Axis-swapped joint rotations when reading posed armatures**: `get_armature_joint_rots` was returning Kimodo-frame rotations whose axes were swapped on any bone with a non-identity Blender rest orientation — most visibly elbows, shoulders, hips, and hands. A 140° elbow flexion (X-axis in Kimodo) was coming back as a ~138° rotation around Y, so full-body constraints produced visibly wrong limb poses after round-tripping through BVH. The extractor now uses the rest-orientation-invariant SMPL formulation (`R[i] = G[parent]⁻¹ · G[i]`, with `G[i]` computed as the bone's pose-vs-rest delta in armature space, conjugated into Y-up), which collapses back to the old behavior when rests happen to be identity and corrects the swap when they aren't.
+
+---
+
 ## [1.3.1] — 2026-05-12
 
 ### Fixed
