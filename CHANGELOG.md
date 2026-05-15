@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.3.3] — 2026-05-15
+
+### Fixed
+
+- **Rest-orientation-invariant joint rotations**: Joint rotation extraction now accounts for the rest orientation of each bone, so retargeted motion is correct even when the source armature is not in a canonical rest pose (previously rotations could be offset by the bone's rest transform).
+- **Hand / foot effector constraints targeting hips**: Hand and foot spatial constraints were incorrectly sending the effector target to the hips bone instead of the wrist/ankle end-effector. Fixed so each constraint type maps to the correct bone.
+- **Full-Body constraint re-enabled**: The Full-Body pose constraint (pose a reference armature to set a full joint-pose keyframe) was inadvertently disabled; it is now re-enabled. Duplicate pose markers are also frozen to prevent accidental edits.
+
+### Changed
+
+- **Default retarget mode is now "Child Of"**: New bone-mapping entries default to the *Child Of* constraint instead of *Copy Rotation*, which produces better full-body results out of the box for most rigs.
+
+### Added
+
+- **`blender_manifest.toml`**: Added the Blender 4.2+ extension-system manifest so the addon can be installed via the new Extensions platform (`.zip` install and legacy Add-ons path both still work).
+
+---
+
 ## [1.3.1] — 2026-05-12
 
 ### Fixed

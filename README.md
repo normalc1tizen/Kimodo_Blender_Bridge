@@ -39,7 +39,7 @@ The bridge server loads the Kimodo model once at startup and then responds to ge
 
 ## Installation
 
-As of v1.2.0 Kimodo installs itself automatically — no terminal required.
+As of v1.2.0 Kimodo installs itself automatically — no terminal required. The addon is also compatible with the Blender 4.2+ Extensions platform (includes `blender_manifest.toml`).
 
 ### 1 — Install the Blender addon
 
